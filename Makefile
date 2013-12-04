@@ -5,7 +5,7 @@ DEST:=$(PREFIX)$(PROJECT)
 REBAR=./rebar
 TMP_DIR=./erl-zab0.tmp
 APP_NAME=zab
-PROJECT_NAME=erl-zab0
+PROJECT_NAME=erl-zab
 
 all:
 	@rm -rf ./deps
