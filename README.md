@@ -50,3 +50,6 @@ zab/etc/app.config:
 		{minus,X,Y}
 		{times,X,Y}
 		{divide,X,Y}
+		
+		
+		
