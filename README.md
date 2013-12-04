@@ -10,6 +10,11 @@ zab/etc/app.config:
 	配置好cookie后用erl-zab/bin/erl-zab.sh console启动节点
 
 
+## run ##
+	
+	make compile,clean,test,release
+
+
 ##API##
 
 
@@ -50,6 +55,3 @@ zab/etc/app.config:
 		{minus,X,Y}
 		{times,X,Y}
 		{divide,X,Y}
-		
-		
-		
