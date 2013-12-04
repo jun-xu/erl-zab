@@ -511,7 +511,7 @@ loop_monitor(Pids,S,F) ->
 	
 	 after 15*1000 ->
 			[{_,P}|_] = Pids,
-			?INFO_F("~p -- not terminate pids:~p~n",[?MODULE,Pids]),
+			?INFO("~p -- not terminate pids:~p~n",[?MODULE,Pids]),
 			exit(test_failed)
 	end.
 
@@ -521,7 +521,7 @@ assert_msg(Msg) ->
 		 Msg ->
 			 ok;
 		 O -> 
-			 ?INFO_F("~p -- unexcept msg:~p~n",[?MODULE,O]),
+			 ?INFO("~p -- unexcept msg:~p~n",[?MODULE,O]),
 			 assert_msg(Msg)
 	after 1000*6 ->
 			exit(test_failed)
@@ -541,7 +541,7 @@ stress_test(_) ->
 	RootDir = Dir ++ "/zab0/",
 	
 	erlang:set_cookie(node(), Cookie),
-	?INFO_F("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
+	?INFO("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
 	{ok, Pwd} = file:get_cwd(),
 	Host = '127.0.0.1',
 	Args = "-pa "++ Pwd ++"/../../ebin "++Pwd ++"/../../deps/ce/ebin -setcookie " ++ atom_to_list(Cookie),
@@ -575,7 +575,7 @@ stress_test(_) ->
 	lists:foreach(fun(_) ->
 						  zab:write(?TEST_BIN) end, lists:seq(1, Max)),
 	
-	?INFO_F("~p write ~p msg,use time(ms):~p~n",[?MODULE,Max,zab_util:tstamp()-T1]),
+	?INFO("~p write ~p msg,use time(ms):~p~n",[?MODULE,Max,zab_util:tstamp()-T1]),
 	
 	slave:stop(N1),
 	slave:stop(N2),

@@ -133,7 +133,7 @@ test_append_1000(_) ->
 	ST = zab_util:tstamp(),
 	ok = append_times(1000),
 	ET = zab_util:tstamp(),
-	?INFO_F("cost time:~p~n",[(ET-ST)]),
+	?INFO("cost time:~p~n",[(ET-ST)]),
 	ok = file_txn_log:stop(test),
 	ok.
 

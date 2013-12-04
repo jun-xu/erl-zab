@@ -52,7 +52,7 @@ start_link() ->
 %%          {error, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
-   	?INFO_F("~p -- start ...~n",[?MODULE]),
+   	?INFO("~p -- start ...~n",[?MODULE]),
 	ZabApplyServer = ?CHILD(zab_apply_server,worker),
 	TxnLogServer = ?CHILD(file_txn_log,worker),
 	ZabManagerServer = ?CHILD(zab_manager,worker),

@@ -54,7 +54,7 @@ commit(_Zxid) ->
 
 -spec broadcast(Propasal::#propose{}) ->{error,Reason::term()} | {Zxid::integer(),Node::node()}.
 broadcast(Propasal) ->
-%% 	?INFO_F("~p -- receive Propasal:~p~n",[?MODULE,Propasal]),
+%% 	?INFO("~p -- receive Propasal:~p~n",[?MODULE,Propasal]),
 	gen_fsm:send_all_state_event(?MODULE, {broadcast,Propasal}).
 
 
@@ -70,7 +70,7 @@ broadcast(Propasal) ->
 %% --------------------------------------------------------------------
 init([Leader]) ->
 	{ok,{LastZxid,LastMsg}} = file_txn_log:get_last_msg(),
-	?INFO_F("~p -- init,leader:~p,last_zxid:~p~n",[?MODULE,Leader,LastZxid]),
+	?INFO("~p -- init,leader:~p,last_zxid:~p~n",[?MODULE,Leader,LastZxid]),
 	{ok,Pid} = rpc:call(Leader, zab_manager, get_sync_pid, []),
 	Ref = erlang:monitor(process, Pid),
 	gen_fsm:send_event(?MODULE, register),
@@ -106,7 +106,7 @@ init([Leader]) ->
 			?ERROR_F("~p -- recover from leader:~p error:~p~n",[?MODULE,Leader,Reason]),
 			 {stop,recover_failed,StateData};
 		{ok,#recover_response{type=?RECOVER_TYPE_TRUNC}} ->
-			?INFO_F("~p -- truncate last zxid:~p when recovering.~n",[?MODULE,LastZxid]),
+			?INFO("~p -- truncate last zxid:~p when recovering.~n",[?MODULE,LastZxid]),
 			ok = file_txn_log:truncate_last_zxid(),
 			gen_fsm:send_event(?MODULE, recover),
 			{ok,{NewLastZxid,TxnLogLastMsg}} = file_txn_log:get_last_msg(),
@@ -143,7 +143,7 @@ init([Leader]) ->
 			gen_fsm:send_event(?MODULE, {recover,RecoverLastZxid}),
 			{next_state,?ZAB_STATE_SYNCING, StateData#state{last_zxid=NewLastZxid,last_msg=NewLastMsg}};
 		_ ->
-			?INFO_F("~p -- recover failed when recover diff.~n",[?MODULE]),
+			?INFO("~p -- recover failed when recover diff.~n",[?MODULE]),
 			{stop, normal, StateData}
 	end.
 	
@@ -204,7 +204,7 @@ handle_event({broadcast,#propose{zxid=Zxid,value=Val}}, ?ZAB_STATE_BROADCAST, #s
 	{next_state, ?ZAB_STATE_BROADCAST, StateData#state{last_zxid=Zxid,last_msg=Val}};	
 
 handle_event(Event, StateName, StateData) ->
-	?INFO_F("~p -- ignore event:~p on state:~p~n",[?MODULE,Event,StateName]),
+	?INFO("~p -- ignore event:~p on state:~p~n",[?MODULE,Event,StateName]),
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -230,7 +230,7 @@ handle_sync_event(Event, From, StateName, StateData) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 handle_info({'DOWN', Ref, process, _Pid, Reason}, StateName, #state{leader=Leader,leader_ref=Ref}=StateData) ->
-    ?INFO_F("~p -- leader:~p sync process down~n",[?MODULE,Leader]),
+    ?INFO("~p -- leader:~p sync process down~n",[?MODULE,Leader]),
 	{stop, {error,lost_leader}, StateData};
 
 handle_info(Info, StateName, StateData) ->

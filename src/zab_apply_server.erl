@@ -76,7 +76,7 @@ init([]) ->
 			   end,
 %% 	Dir = zab_util:get_app_env(snapshot_dir, [], "./"),
 	{FD,LastCommitZxid,Offset} = load_last_commit(),
-	?INFO_F("~p -- start with apply mod:~p with last commit zxid:~p~n",[?MODULE,ApplyMod,LastCommitZxid]),
+	?INFO("~p -- start with apply mod:~p with last commit zxid:~p~n",[?MODULE,ApplyMod,LastCommitZxid]),
     {ok, #state{fd=FD,offset=Offset,last_commit_zxid=LastCommitZxid,apply_mod=ApplyMod}}.
 
 %% --------------------------------------------------------------------
@@ -91,11 +91,11 @@ init([]) ->
 %% --------------------------------------------------------------------
 
 handle_call({rest_callback,Mod,Fun}, _From, State) ->
-	?INFO_F("~p -- reset apply mod:~p~n",[?MODULE,{Mod,Fun}]),
+	?INFO("~p -- reset apply mod:~p~n",[?MODULE,{Mod,Fun}]),
     {reply, ok, State#state{apply_mod={Mod,Fun}}};
 
 handle_call(clear_callback, _From, State) ->
-	?INFO_F("~p -- clear_callback apply mod.~n",[?MODULE]),
+	?INFO("~p -- clear_callback apply mod.~n",[?MODULE]),
     {reply, ok, State#state{apply_mod=undefined}};
 
 
@@ -103,12 +103,12 @@ handle_call(get_last_commit_zxid, _From, #state{last_commit_zxid=Zxid}=State) ->
     {reply, {ok,Zxid}, State};
 
 handle_call({stop,Reason}, _From,#state{fd=FD} = State) ->
-	?INFO_F("~p -- stop by reason:~p~n",[?MODULE,Reason]),
+	?INFO("~p -- stop by reason:~p~n",[?MODULE,Reason]),
 	prim_file:close(FD),
 	{stop, normal, ok, State};
 
 handle_call(Request, _From, State) ->
-	?INFO_F("~p -- not implement call:~p~n",[?MODULE,Request]),
+	?INFO("~p -- not implement call:~p~n",[?MODULE,Request]),
     {reply, ok, State}.
 
 %% --------------------------------------------------------------------
@@ -119,7 +119,7 @@ handle_call(Request, _From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_cast({commit,Zxid,_}, #state{last_commit_zxid=LastZxid} = State) when Zxid =< LastZxid ->
-	?INFO_F("~p -- already commit zxid:~p.~n",[?MODULE,Zxid]),
+	?INFO("~p -- already commit zxid:~p.~n",[?MODULE,Zxid]),
     {noreply, State};
 
 handle_cast({commit,Zxid,_}, #state{apply_mod=undefined,fd=Fd,offset=Offset} = State) ->
@@ -133,12 +133,12 @@ handle_cast({commit,Zxid,Msg}, #state{apply_mod={M,F},fd=Fd,offset=Offset} = Sta
 			{NewFd,NewOffset} = dump_to_file(Zxid, Fd, Offset),
 			{noreply, State#state{last_commit_zxid=Zxid,fd=NewFd,offset=NewOffset}};
 		E ->
-			?INFO_F("~p -- commit msg:~p error:~p, stop.~n",[?MODULE,Zxid,E]),
+			?INFO("~p -- commit msg:~p error:~p, stop.~n",[?MODULE,Zxid,E]),
 			{stop, normal, State}    
 	end;
 
 handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=LastZxid} = State) when Zxid =< LastZxid ->
-	?INFO_F("~p -- already commit:~p~n",[?MODULE,Zxid]),
+	?INFO("~p -- already commit:~p~n",[?MODULE,Zxid]),
     {noreply, State};
 handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_mod=undefined,fd=Fd,offset=Offset} = State) ->
 	?WARN_F("~p -- ignore zxid:~p msg by reason:~p~n",[?MODULE,Zxid,no_apply_function]),
@@ -174,12 +174,12 @@ handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_
 					{NewFd,NewOffset} = dump_to_file(LastCommitZxid, Fd, Offset),
 					{noreply, State#state{fd=NewFd,last_commit_zxid=LastCommitZxid,offset=NewOffset}};
 				{error,_E,undefined} ->
-					?INFO_F("~p -- load commit msgs between ~p to ~p~n... stop.~n",[?MODULE,CommitedId,Zxid]),
+					?INFO("~p -- load commit msgs between ~p to ~p~n... stop.~n",[?MODULE,CommitedId,Zxid]),
 					{stop, normal,State};
 				{error,_E,LastCommitId} ->
 					?DEBUG_F("~p -- dump to file:~p~n",[?MODULE,{LastCommitId, Fd, Offset}]),
 					{NewFd,NewOffset} = dump_to_file(LastCommitId, Fd, Offset),
-					?INFO_F("~p -- load commit msgs between ~p to ~p error with lastCommitedZxid:~p... stop.~n",[?MODULE,CommitedId,Zxid,LastCommitId]),
+					?INFO("~p -- load commit msgs between ~p to ~p error with lastCommitedZxid:~p... stop.~n",[?MODULE,CommitedId,Zxid,LastCommitId]),
 					{stop, normal, State#state{fd=NewFd,last_commit_zxid=LastCommitId,offset=NewOffset}}
 					
 			end
@@ -187,7 +187,7 @@ handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_
 	
 
 handle_cast(Msg, State) ->
-	?INFO_F("~p -- not implement cast:~p~n",[?MODULE,Msg]),
+	?INFO("~p -- not implement cast:~p~n",[?MODULE,Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -198,7 +198,7 @@ handle_cast(Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(Info, State) ->
-	?INFO_F("~p -- not implement info:~p~n",[?MODULE,Info]),
+	?INFO("~p -- not implement info:~p~n",[?MODULE,Info]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -207,7 +207,7 @@ handle_info(Info, State) ->
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
 terminate(Reason, State) ->
-	?INFO_F("~p -- terminate by reason:~p~n",[?MODULE,Reason]),
+	?INFO("~p -- terminate by reason:~p~n",[?MODULE,Reason]),
     ok.
 
 %% --------------------------------------------------------------------

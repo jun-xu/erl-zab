@@ -90,7 +90,7 @@ stop(Reason) ->
 %%----------------------------------------------------------------------
 init([]) ->
 	Dir = zab_util:get_app_env(txn_log_dir, [], "./"),
-	?INFO_F("~p -- start txn log with dir:~p~n",[?MODULE,Dir]),
+	?INFO("~p -- start txn log with dir:~p~n",[?MODULE,Dir]),
 	ok = filelib:ensure_dir(Dir),
 	{FD,DataOffset,IndexOffset,LastZxid,LastMsg} = open_last_file(Dir),
     {ok, #txn_log{dir=Dir,current_file=FD,current_file_data_offset=DataOffset,
@@ -112,7 +112,7 @@ init([]) ->
 
 %% normally, should not append data which zxid < lastzxid.
 handle_call({append,Zxid,_Data}, _From, #txn_log{last_zxid=LastZxid} = State) when Zxid =< LastZxid ->
-	?INFO_F("~p -- already append zxid:~p~n",[?MODULE,Zxid]),
+	?INFO("~p -- already append zxid:~p~n",[?MODULE,Zxid]),
 	{reply, {error,ignored}, State};
 %% roll log when index overflow.
 handle_call({append,Zxid,Data}, _From, #txn_log{dir=Dir,current_file=FD,current_file_index_offset=IndexOffset} = State) 
@@ -136,7 +136,7 @@ handle_call({append,Zxid,Data}, _From, #txn_log{current_file=FD,dir=Dir,current_
     {reply, ok, State#txn_log{current_file=NewFD,current_file_data_offset=DataOffset1,
 							  current_file_index_offset=IndexOffset1,last_zxid=Zxid,last_msg=Data}};
 handle_call({stop,Reason}, _From,#txn_log{current_file=FD} = State) ->
-	?INFO_F("~p -- stop by reason:~p~n",[?MODULE,Reason]),
+	?INFO("~p -- stop by reason:~p~n",[?MODULE,Reason]),
 	prim_file:close(FD),
 	{stop, normal, ok, State};
 
@@ -296,12 +296,12 @@ open_file(FileName) ->
 					{ok,{FD,Offset+Len,Size,Zxid,Value}};
 				false ->
 					%% maybe delete file when the file is empty.
-					?INFO_F("~p -- open txn file error by reason:~p .~n",[?MODULE,empty]),
+					?INFO("~p -- open txn file error by reason:~p .~n",[?MODULE,empty]),
 					{error,empty_file}
 			end;
 		_ ->
 			%% maybe delete file when first 4 byte is not magic number.
-			?INFO_F("~p -- error file:~p of magic num.~n",[?MODULE,FileName]),
+			?INFO("~p -- error file:~p of magic num.~n",[?MODULE,FileName]),
 			prim_file:close(FD),
 			{error,invalidate_file}
 	end.
@@ -331,7 +331,7 @@ truncate(FileName) ->
 	end.
 	
 append_data_to_file(FD,DataOffset,IndexOffset,Zxid,Data) ->
-%% 	?INFO_F("append data:~p to offset:~p~n",[Zxid,DataOffset]),
+%% 	?INFO("append data:~p to offset:~p~n",[Zxid,DataOffset]),
 	{ok,_} = prim_file:position(FD, DataOffset),
 	Crc = erlang:crc32(Data),
 	Length = size(Data),

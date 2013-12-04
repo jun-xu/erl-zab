@@ -57,7 +57,7 @@ test_election_votes_not_enough(_) ->
 	RootDir = Dir ++ "/zab0/",
 	
 	erlang:set_cookie(node(), Cookie),
-	?INFO_F("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
+	?INFO("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
 	{ok, Pwd} = file:get_cwd(),
 	application:set_env(zab,txn_log_dir,Dir ++ "/zab0/"),
 	application:start(ce),
@@ -108,7 +108,7 @@ test_election_leader_with_self_is_leader2(_) ->
 	RootDir = Dir ++ "/zab0/",
 	
 	erlang:set_cookie(node(), Cookie),
-	?INFO_F("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
+	?INFO("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
 	{ok, Pwd} = file:get_cwd(),
 	Host = '127.0.0.1',
 	Args = "-pa "++ Pwd ++"/../../ebin "++Pwd ++"/../../deps/ce/ebin -setcookie " ++ atom_to_list(Cookie),
@@ -149,7 +149,7 @@ test_election_leader_with_self_is_leader(_) ->
 	RootDir = Dir ++ "/zab0/",
 	
 	erlang:set_cookie(node(), Cookie),
-	?INFO_F("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
+	?INFO("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
 	{ok, Pwd} = file:get_cwd(),
 	Host = '127.0.0.1',
 	Args = "-pa "++ Pwd ++"/../../ebin "++Pwd ++"/../../deps/ce/ebin -setcookie " ++ atom_to_list(Cookie),
@@ -192,7 +192,7 @@ test_election_leader_with_self_is_follower(_) ->
 	RootDir = Dir ++ "/zab0/",
 	
 	erlang:set_cookie(node(), Cookie),
-	?INFO_F("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
+	?INFO("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
 	{ok, Pwd} = file:get_cwd(),
 	Host = '127.0.0.1',
 	Args = "-pa "++ Pwd ++"/../../ebin "++Pwd ++"/../../deps/ce/ebin -setcookie " ++ atom_to_list(Cookie),
@@ -238,7 +238,7 @@ test_election_leader_with_self_is_follower1(_) ->
 	RootDir = Dir ++ "/zab0/",
 	
 	erlang:set_cookie(node(), Cookie),
-	?INFO_F("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
+	?INFO("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
 	{ok, Pwd} = file:get_cwd(),
 	Host = '127.0.0.1',
 	Args = "-pa "++ Pwd ++"/../../ebin "++Pwd ++"/../../deps/ce/ebin -setcookie " ++ atom_to_list(Cookie),
@@ -276,7 +276,7 @@ assert_msg(Msg) ->
 		 Msg ->
 			 ok;
 		 O -> 
-			 ?INFO_F("~p -- unexcept msg:~p~n",[?MODULE,O]),
+			 ?INFO("~p -- unexcept msg:~p~n",[?MODULE,O]),
 			 assert_msg(Msg)
 	after 1000*6 ->
 			exit(test_failed)
