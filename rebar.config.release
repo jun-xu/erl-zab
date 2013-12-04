@@ -1,0 +1,13 @@
+{cover_enabled, true}.
+{clean_files, ["logs"]}.
+{test_deps, false}.
+{show_cmd, true}.
+{deps_dirs, ["deps"]}.
+{test_node_name, "zab@127.0.0.1"}.
+{erl_opts, [debug_info, {i, "include"}, {src_dirs, ["src"]}]}.
+{deps, [
+	{meck, ".*", {git, "git@192.168.203.211:skyFS-meck", "master"}},
+	{ce, ".*", {git, "git@192.168.203.211:skyFS-clusterengine", "master"}}
+]}.
+{sub_dirs, ["rel"]}.                          
+{edoc_opts,[{packages,false},{subpackages,false}]}.
