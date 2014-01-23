@@ -212,7 +212,7 @@ handle_info({election,follower,Leader} = Msg,#state{parent_pid=ParentPid} = Stat
 
 
 handle_info({'EXIT',Pid,Reason},#state{sync_pid=Pid} = State) ->
-	?INFO("~p -- sync process exit with reason:~p~n",[?MODULE,Reason]),
+	?INFO_F("~p -- sync process exit with reason:~p~n",[?MODULE,Reason]),
 	start_zab(),
 	{noreply, State#state{followers=[],leader=undefined,server_state=?SERVER_STATE_LOOKING}};
 
@@ -228,7 +228,7 @@ handle_info({follower_down,Id},#state{followers=Followers} = State) ->
 	{noreply, State#state{followers=lists:delete(Id, Followers)}};
 
 handle_info(_Info, State) ->
-	?INFO("~p -- msg:~p not implement.~n",[?MODULE,_Info]),
+	?INFO_F("~p -- msg:~p not implement.~n",[?MODULE,_Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

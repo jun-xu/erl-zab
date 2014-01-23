@@ -40,13 +40,13 @@ write(Msg)->
 	end.
 
 get_last_zxid() ->
-	file_txn_log:get_last_zxid().
+	file_txn_log_ex:get_last_zxid().
 
 get_state() ->
 	zab_manager:get_state().
 
 get_value(Zxid) ->
-	case file_txn_log:get_value(Zxid) of
+	case file_txn_log_ex:get_value(Zxid) of
 		{ok,Val} ->
 			{ok,binary_to_term(Val)};
 		Error ->
@@ -54,7 +54,7 @@ get_value(Zxid) ->
 	end.
 
 load_msgs_from(Zxid) ->
-	file_txn_log:load_logs(Zxid).
+	file_txn_log_ex:load_logs(Zxid).
 
 get_last_commit_zxid() ->
 	zab_apply_server:get_last_commit_zxid().
@@ -68,6 +68,7 @@ waitting_ack() ->
 		Any ->
 			Any
 	after ?TIME_OUT_WRITE ->
+			?DEBUG_F("~p -- send msg timout",[?MODULE]),
 			{error,timeout}
 	end.
 

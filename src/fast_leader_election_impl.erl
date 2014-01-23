@@ -65,9 +65,9 @@ stop() ->
 %% --------------------------------------------------------------------
 init([]) ->
 	SelfNode = node(),
-	{ok,Zxid} = file_txn_log:get_last_zxid(),
+	{ok,Zxid} = file_txn_log_ex:get_last_zxid(),
 	{Epoch,_} = zab_util:split_zxid(Zxid),
-	?INFO("~p -- start election with args:~p~n",[?MODULE,{SelfNode,Epoch,Zxid}]),
+	?INFO_F("~p -- start election with args:~p~n",[?MODULE,{SelfNode,Epoch,Zxid}]),
     {ok, ?ELECTION_STATE_NAME_LOOKING,#election{epoch=Epoch,zxid=Zxid,node=SelfNode,
 				   proposed_zxid=Zxid,proposed_epoch=Epoch,proposed_leader=SelfNode}}.
 	
@@ -117,7 +117,7 @@ init([]) ->
 					{next_state, ?ELECTION_STATE_NAME_LOOKING,State};
 				%% sent nodes does not contain the new node.
 				false ->
-					?INFO("~p -- ~p discover new node:~p~n",[?MODULE,node(),NNode]),
+					?INFO_F("~p -- ~p discover new node:~p~n",[?MODULE,node(),NNode]),
 					%%1.send notification to the node
 					send_notification(State,[NNode],-1),
 					%%2.add node to zabnodes.
@@ -146,15 +146,15 @@ init([]) ->
 	if length(Votes)+1 >= Quorum ->
 			%% self is leader.
 			gen_fsm:send_event(?MODULE,{publish_leader,ECount}),
-			?INFO("~p -- self:~p [won] the election.~n",[?MODULE,node()]),
+			?INFO_F("~p -- self:~p [won] the election.~n",[?MODULE,node()]),
 			{next_state, ?ELECTION_STATE_NAME_LEADERING,State#election{timer=undefined}};
 		true ->
-			?INFO("~p -- self:~p [lose]  by result:~p~n",[?MODULE,node(),votes_not_enough]),
+			?INFO_F("~p -- self:~p [lose]  by result:~p~n",[?MODULE,node(),votes_not_enough]),
 			gen_fsm:send_event(?MODULE,{election_failed,ECount,votes_not_enough}),
 			{next_state,?ELECTION_STATE_NAME_LOOKING,State}
 	end;
 ?ELECTION_STATE_NAME_LOOKING({election_failed,ECount,Reason},#election{ecount=ECount,timer=Timer} = State) ->
-	?INFO("~p-- ~p election failed by reason:~p~n",[?MODULE,node(),Reason]),
+	?INFO_F("~p-- ~p election failed by reason:~p~n",[?MODULE,node(),Reason]),
 	cancel_timer(Timer),
 	NewTimer = gen_fsm:send_event_after(?DEFAULT_INTERVAL_TIMEROUT, {election_timeout,ECount}),
 	{next_state,?ELECTION_STATE_NAME_LOOKING,State#election{timer=NewTimer}};
@@ -175,7 +175,7 @@ init([]) ->
 	{stop, normal, State};
 
 ?ELECTION_STATE_NAME_LOOKING(Event,State) ->
-	?INFO("~p -- not implement event:~p on state:~p~n",[?MODULE,Event,?ELECTION_STATE_NAME_LOOKING]),
+	?INFO_F("~p -- not implement event:~p on state:~p~n",[?MODULE,Event,?ELECTION_STATE_NAME_LOOKING]),
 	{next_state, ?ELECTION_STATE_NAME_LOOKING,State}.
 
 %% ------------------------------------following state ---------------------------------------- 
@@ -214,7 +214,7 @@ init([]) ->
 
 
 ?ELECTION_STATE_NAME_FOLLOWING({election_failed,ECount,Reason},#election{ecount=ECount,timer=Timer}=State) ->
-	?INFO("~p -- ~p election failed by reason:~p~n",[?MODULE,node(),Reason]),
+	?INFO_F("~p -- ~p election failed by reason:~p~n",[?MODULE,node(),Reason]),
 	cancel_timer(Timer),
 	NewTimer = gen_fsm:send_event_after(?DEFAULT_INTERVAL_TIMEROUT, {election_timeout,ECount}),
 	{next_state,?ELECTION_STATE_NAME_LOOKING,State#election{timer=NewTimer}};
@@ -226,7 +226,7 @@ init([]) ->
 	{stop, normal, State};
 
 ?ELECTION_STATE_NAME_FOLLOWING(Event,State) ->
-	?INFO("~p -- not implement event:~p on state:~p~n",[?MODULE,Event,?ELECTION_STATE_NAME_FOLLOWING]),
+	?INFO_F("~p -- not implement event:~p on state:~p~n",[?MODULE,Event,?ELECTION_STATE_NAME_FOLLOWING]),
 	{next_state, ?ELECTION_STATE_NAME_FOLLOWING,State}.
 
 %%-------------------------------------- leading state-----------------------------------------------
@@ -256,7 +256,7 @@ init([]) ->
 	end;
 
 ?ELECTION_STATE_NAME_LEADERING({election_failed,ECount,Reason},#election{ecount=ECount,timer=Timer}=State) ->
-	?INFO("~p -- ~p election failed by reason:~p on state:~p~n",[?MODULE,node(),Reason,?ELECTION_STATE_NAME_LEADERING]),
+	?INFO_F("~p -- ~p election failed by reason:~p on state:~p~n",[?MODULE,node(),Reason,?ELECTION_STATE_NAME_LEADERING]),
 	cancel_timer(Timer),
 	NewTimer = gen_fsm:send_event_after(?DEFAULT_INTERVAL_TIMEROUT, {election_timeout,ECount}),
 	{next_state,?ELECTION_STATE_NAME_LOOKING,State#election{timer=NewTimer}};
@@ -299,7 +299,7 @@ init([]) ->
 			zab_manager ! {election,leader,lists:sort(Followers)},
 			{stop,normal,State#election{followers=ACKFollowers,timer=undefined}};
 		true ->
-			?INFO("~p -- leader:~p [lose]  by result:~p~n",[?MODULE,node(),leader_acks_not_enough]),
+			?INFO_F("~p -- leader:~p [lose]  by result:~p~n",[?MODULE,node(),leader_acks_not_enough]),
 			gen_fsm:send_event(?MODULE,{leader_failed,LeaderECount,leader_acks_not_enough}),
 			{next_state,?ELECTION_STATE_NAME_LEADERING,State#election{timer=undefined}}
 	end;
@@ -329,7 +329,7 @@ init([]) ->
 	{next_state, ?ELECTION_STATE_NAME_LEADERING,NewState#election{timer=LeaderTimerOutTimer}};
 
 ?ELECTION_STATE_NAME_LEADERING(Event,State) ->
-	?INFO("~p -- not implement event:~p on ~p~n",[?MODULE,Event,?ELECTION_STATE_NAME_LEADERING]),
+	?INFO_F("~p -- not implement event:~p on ~p~n",[?MODULE,Event,?ELECTION_STATE_NAME_LEADERING]),
 	{next_state, ?ELECTION_STATE_NAME_LEADERING,State}.
 
 %% --------------------------------------------------------------------
@@ -352,13 +352,13 @@ state_name(Event, From, StateData) ->
 %%          {stop, Reason, NewStateData}
 %%-------------------------------------- all state msg-----------------------------------------------
 handle_event({start_election,From,_,1}, ?ELECTION_STATE_NAME_LOOKING, State) ->
-	?INFO("~p -- local leader:~p... ~n",[?MODULE,node()]),
+	?INFO_F("~p -- local leader:~p... ~n",[?MODULE,node()]),
 	zab_util:notify_caller(zab_manager, {election,leader,[]}),
 	{stop,normal,State};
     
 handle_event({start_election,From,ZabNodes,Quorum}, ?ELECTION_STATE_NAME_LOOKING, #election{epoch=Epoch,node=SelfNode,
 				  			proposed_epoch=Epoch,proposed_leader=SelfNode} = State) ->
-	?INFO("~p -- start election on ~p... ~n",[?MODULE,node()]),
+	?INFO_F("~p -- start election on ~p... ~n",[?MODULE,node()]),
 	{ok,Timer,NewEcount,Vote} = start_election0(State#election{zab_nodes=ZabNodes,quorum=Quorum}),
 	Votes0 =[],
 %% 	?DEBUG_F("~p -- predicate_votes:~p~n zabs:~p~n",[?MODULE,Votes0,ZabNodes]),
@@ -367,7 +367,7 @@ handle_event({start_election,From,ZabNodes,Quorum}, ?ELECTION_STATE_NAME_LOOKING
 															 timer=Timer,ecount=NewEcount,from=From,votes=Votes0}};
 
 handle_event(Event, StateName, StateData) ->
-	?INFO("~p -- not implement msg:~p on state:~p~n",[?MODULE,Event,StateName]),
+	?INFO_F("~p -- not implement msg:~p on state:~p~n",[?MODULE,Event,StateName]),
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -430,7 +430,7 @@ start_election0(#election{timer=OldTimer,quorum=Quorum,timeout=Timeout,zab_nodes
 
 clear_state(#election{timer=Timer,zab_nodes=ZabNodes,quorum=Quorum,ecount=Ecount}) ->
 	cancel_timer(Timer),
-	{ok,Zxid} = file_txn_log:get_last_zxid(),
+	{ok,Zxid} = file_txn_log_ex:get_last_zxid(),
 	{Epoch,_} = zab_util:split_zxid(Zxid),
 	SelfNode = node(),
 	#election{epoch=Epoch,zxid=Zxid,node=SelfNode,zab_nodes=ZabNodes,quorum=Quorum,proposed_zxid=Zxid,
@@ -491,7 +491,7 @@ send_election_ack(Node,#notification{proposed_leader=LeaderNode,ecount=ECount}=N
 
 change_to_following_state(Timer,NNode,Epoch,VoteECount,Node,NEpoch,NLeader,NZxid,Zxid,State,ECount,CurEpoch,CurZxid,LeaderNode) ->
 	cancel_timer(Timer),
-	?INFO("~p -- self:~p change to [follower].~n",[?MODULE,node()]),
+	?INFO_F("~p -- self:~p change to [follower].~n",[?MODULE,node()]),
 	send_election_ack(NNode,#notification{epoch=Epoch,ecount=VoteECount,node=Node,proposed_epoch=CurEpoch,proposed_leader=LeaderNode,proposed_zxid=CurZxid,zxid=Zxid}),
 	FollowerTimerOutTimer = gen_fsm:send_event_after(?DEFAULT_WAITING_TIMEOUT, {election_failed,ECount,following_timeout}),
 	{next_state,?ELECTION_STATE_NAME_FOLLOWING, State#election{votes=[],proposed_epoch=NEpoch,proposed_leader=NLeader,timer=FollowerTimerOutTimer,
@@ -499,7 +499,7 @@ change_to_following_state(Timer,NNode,Epoch,VoteECount,Node,NEpoch,NLeader,NZxid
 
 change_to_following_state_when_rev_ack(Timer,State,NEpoch,NNode,NZxid,ECount) ->
 	cancel_timer(Timer),
-	?INFO("~p -- self(ack):~p change to [follower].~n",[?MODULE,node()]),
+	?INFO_F("~p -- self(ack):~p change to [follower].~n",[?MODULE,node()]),
 	FollowerTimerOutTimer = gen_fsm:send_event_after(?DEFAULT_WAITING_TIMEOUT, {election_failed,ECount,following_timeout}),
 	{next_state,?ELECTION_STATE_NAME_FOLLOWING, State#election{votes=[],proposed_epoch=NEpoch,proposed_leader=NNode,timer=FollowerTimerOutTimer,
 									 proposed_zxid=NZxid,followers=[],followers_acks=[]}}.

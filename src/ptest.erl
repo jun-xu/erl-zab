@@ -1,8 +1,8 @@
-%% Author: clues
-%% Created: Apr 27, 2013
+%% Author: zj
+%% Created: jan 9, 2014
 %% Description: TODO: Add description to arithmetic
 %% just for test only !!!
--module(math_apply).
+-module(ptest).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
@@ -15,9 +15,9 @@
 %% External exports
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/2, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {init=0,seqno=0,result=0}).
+-record(state, {nodePid=0,total=0,count=0}).
 
 %% ====================================================================
 %% External functions
@@ -27,16 +27,15 @@
 %% Exported Functions
 %%
 -export([call/1,stop/0,result/0,
-		 start_link/0
-%% 		 get_state/0
+		 start_link/2
 ]).
 
 %%
 %% API Functions
 %%
 
-start_link() ->
-	gen_server:start_link({local,?MODULE}, ?MODULE, [],[]).
+start_link(NodePid,Total) ->
+	gen_server:start_link({local,?MODULE}, ?MODULE, [NodePid,Total],[]).
 
 %% get_state() ->
 %% 	gen_server:call(?MODULE, get_state).
@@ -65,8 +64,9 @@ stop() ->
 %%          ignore               |
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
-init([]) ->
-    {ok, #state{}}.
+init(NodePid,Total) ->
+	timer:send_interval(100, compareValue),
+    {ok, #state{nodePid=NodePid,total=Total,count=0}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -78,41 +78,8 @@ init([]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call({reset,N}, _From, State) ->
-	?DEBUG_F("~p -- reset init value is:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{init=N,result=N,seqno=0}};
-
-handle_call({plus,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- plus:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=N+Val,seqno=Seqno+1}};
-
-handle_call({minus,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- minus:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=Val-N,seqno=Seqno+1}};
-
-handle_call({times,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- times:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=Val*N,seqno=Seqno+1}};
-
-handle_call({divide,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- divide:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=Val div N,seqno=Seqno+1}};
-
-handle_call(result, _From, #state{init=Int,result=Val,seqno=Seqno}=State) ->
-    {reply, {Val,Seqno,Int}, State};
-
-handle_call({error,test}, _From, State) ->
-    {reply, {error,test},State};
-
-handle_call({error,exit_pid_test}, _From, State) ->
-    {reply, {'EXIT',self(),failed},State};
-
-handle_call(stop,_,State) ->
-	{stop, normal, ok, State};
-
-handle_call(Request, From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call(plus, _From, State=#state{count=Count}) ->
+    {reply, ok,State#state{count=Count+1}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_cast/2
@@ -121,7 +88,7 @@ handle_call(Request, From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast(Msg, State) ->
+handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -131,6 +98,21 @@ handle_cast(Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_info(compareValue, State=#state{nodePid=N,total=T,count=C}) ->
+	case C > 0 of
+		true ->
+			case T - C of
+				0 ->
+					N! finished,
+					{stop,ok,State};
+				_ ->
+					{noreply, State}
+			end;
+		_ ->
+			{noreply, State}
+	end;
+    
+
 handle_info(Info, State) ->
     {noreply, State}.
 
@@ -153,3 +135,4 @@ code_change(OldVsn, State, Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
+

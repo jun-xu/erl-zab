@@ -29,7 +29,7 @@
 -define(SERVER, ?MODULE).
 -define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
--define(MAX_RESTART,    5).
+-define(MAX_RESTART,    1).
 -define(MAX_TIME,      10).
 %% --------------------------------------------------------------------
 %% Records
@@ -52,12 +52,13 @@ start_link() ->
 %%          {error, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
-   	?INFO("~p -- start ...~n",[?MODULE]),
+   	?INFO_F("~p -- start ...~n",[?MODULE]),
 	ZabApplyServer = ?CHILD(zab_apply_server,worker),
-	TxnLogServer = ?CHILD(file_txn_log,worker),
+	TxnLogServer = ?CHILD(file_txn_log_ex,worker),
 	ZabManagerServer = ?CHILD(zab_manager,worker),
-	TestApplyMode = ?CHILD(math_apply,worker),
-    {ok, { {one_for_one, ?MAX_RESTART, ?MAX_TIME}, [TestApplyMode,TxnLogServer,ZabApplyServer,ZabManagerServer]} }.
+	TestApplyMode = ?CHILD(ptest_apply,worker),
+	TestMathApplyMode = ?CHILD(math_apply,worker),
+    {ok, { {one_for_one, ?MAX_RESTART, ?MAX_TIME}, [TestApplyMode,TestMathApplyMode,TxnLogServer,ZabApplyServer,ZabManagerServer]} }.
 
 %% ====================================================================
 %% Internal functions

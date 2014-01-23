@@ -10,7 +10,7 @@
   {mod, {zab_app, []}},
   {env, [
 		 {quorum,1},
-		 {apply_mod,{math_apply,call}}
+		 {apply_mod,{ptest_apply,call}}
 
   		]}
  ]}.

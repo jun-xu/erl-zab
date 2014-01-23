@@ -7,7 +7,7 @@
 %% Include files
 %%
 -include("log.hrl").
--include("txnlog.hrl").
+-include("txnlog_ex.hrl").
 -include("zab.hrl").
 
 -define(TEST_BIN,<<"this is jack,i want test myself with zab protocol,id:4017,sex:male,age:17">>).
@@ -185,7 +185,7 @@ test_recover_trunc_leader(_) ->
 	rpc:call(N1, application, set_env,[zab,known_nodes,ZabNodes]),
 	rpc:call(N1, application, set_env,[zab,txn_log_dir,Pwd ++ "/zab1/"]),
 	rpc:call(N1, application, start,[zab]),
-	rpc:call(N1,file_txn_log,append,[1,<<>>]),
+	rpc:call(N1,file_txn_log_ex,append,[1,<<>>]),
 	{ok,1} = rpc:call(N1, zab, get_last_zxid,[]),
 	
 	{ok,N2} = slave:start(Host,zab2,Args),
@@ -239,7 +239,7 @@ test_recover_trunc_follower(_) ->
 	
 	{ok,LastZxid} = rpc:call(N1, zab, get_last_zxid,[]),
 	NewZxid = LastZxid+1,
-	rpc:call(N1,file_txn_log,append,[NewZxid,<<>>]),
+	rpc:call(N1,file_txn_log_ex,append,[NewZxid,<<>>]),
 	{ok,NewZxid} = rpc:call(N1, zab, get_last_zxid,[]),
 	
 	
@@ -442,7 +442,7 @@ test_error_leader_checked_timeout(_) ->
 	rpc:call(N1, application, set_env,[zab,known_nodes,ZabNodes]),
 	rpc:call(N1, application, set_env,[zab,txn_log_dir,Pwd ++ "/zab1/"]),
 	rpc:call(N1, application, start,[zab]),
-	rpc:call(N1,file_txn_log,append,[1,<<>>]),
+	rpc:call(N1,file_txn_log_ex,append,[1,<<>>]),
 	
 	{ok,N2} = slave:start(Host,zab2,Args),
 	rpc:call(N2, application, set_env,[zab,txn_log_dir,Pwd ++ "/zab2/"]),
@@ -511,7 +511,7 @@ loop_monitor(Pids,S,F) ->
 	
 	 after 15*1000 ->
 			[{_,P}|_] = Pids,
-			?INFO("~p -- not terminate pids:~p~n",[?MODULE,Pids]),
+			?INFO_F("~p -- not terminate pids:~p~n",[?MODULE,Pids]),
 			exit(test_failed)
 	end.
 
@@ -521,7 +521,7 @@ assert_msg(Msg) ->
 		 Msg ->
 			 ok;
 		 O -> 
-			 ?INFO("~p -- unexcept msg:~p~n",[?MODULE,O]),
+			 ?INFO_F("~p -- unexcept msg:~p~n",[?MODULE,O]),
 			 assert_msg(Msg)
 	after 1000*6 ->
 			exit(test_failed)
@@ -541,7 +541,7 @@ stress_test(_) ->
 	RootDir = Dir ++ "/zab0/",
 	
 	erlang:set_cookie(node(), Cookie),
-	?INFO("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
+	?INFO_F("~p -- self cookie:~p~n",[?MODULE,erlang:get_cookie()]),
 	{ok, Pwd} = file:get_cwd(),
 	Host = '127.0.0.1',
 	Args = "-pa "++ Pwd ++"/../../ebin "++Pwd ++"/../../deps/ce/ebin -setcookie " ++ atom_to_list(Cookie),
@@ -575,7 +575,7 @@ stress_test(_) ->
 	lists:foreach(fun(_) ->
 						  zab:write(?TEST_BIN) end, lists:seq(1, Max)),
 	
-	?INFO("~p write ~p msg,use time(ms):~p~n",[?MODULE,Max,zab_util:tstamp()-T1]),
+	?INFO_F("~p write ~p msg,use time(ms):~p~n",[?MODULE,Max,zab_util:tstamp()-T1]),
 	
 	slave:stop(N1),
 	slave:stop(N2),

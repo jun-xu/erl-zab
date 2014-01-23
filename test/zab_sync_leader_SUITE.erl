@@ -6,7 +6,7 @@
 %% Include files
 %%
 -include("log.hrl").
--include("txnlog.hrl").
+-include("txnlog_ex.hrl").
 -include_lib("kernel/include/file.hrl").
 
 
@@ -51,7 +51,7 @@ all() ->[
 
 test_commit_quorum_3(_) ->
 	{ok,_} = math_apply:start_link(),
-	{ok,_} = file_txn_log:start_link(),
+	{ok,_} = file_txn_log_ex:start_link(),
 	{ok,_} = zab_apply_server:start_link(),
 	ok = zab_apply_server:reset_callback(math_apply, call),
 	{ok,Leader} = zab_sync_leader:start_link(3),
@@ -66,7 +66,7 @@ test_commit_quorum_3(_) ->
 
 test_commit_quorum_1(_) ->
 	{ok,_} = math_apply:start_link(),
-	{ok,_} = file_txn_log:start_link(),
+	{ok,_} = file_txn_log_ex:start_link(),
 	{ok,_} = zab_apply_server:start_link(),
 	ok = zab_apply_server:reset_callback(math_apply, call),
 	{ok,Leader} = zab_sync_leader:start_link(1),
@@ -85,7 +85,7 @@ test_commit_quorum_1(_) ->
 	{2,4,1} = math_apply:result(),
 	zab_sync_leader:stop(normal),
 	zab_apply_server:stop(normal),
-	file_txn_log:stop(normal),
+	file_txn_log_ex:stop(normal),
 	math_apply:stop(),
 	ok.
 

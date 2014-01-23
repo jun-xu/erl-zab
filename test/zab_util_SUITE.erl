@@ -7,7 +7,7 @@
 %% Include files
 %%
 -include("log.hrl").
--include("txnlog.hrl").
+-include("txnlog_ex.hrl").
 -include("zab.hrl").
 %%
 %% Exported Functions
@@ -35,20 +35,15 @@ end_per_testcase(_TestCase, _Config) ->
 
 all() ->
 	[
-	test_all
+ 	test_all
+%%	test_gen_zxid
 	 ].
 
+test_gen_zxid(_) ->
+	
+	ok.
 
 test_all(_) ->
-	{ok,B} = {ok,<<Zxid:64,Offset:64,3:64,0:64>>} = zab_util:log_index_to_binary(#log_index{zxid=1,offset=2,length=3}),
-	{error,bad_args} = zab_util:log_index_to_binary(123),
-	{ok,#log_index{zxid=1,offset=2,length=3}} = zab_util:binary_to_log_index(B),
-	{error,bad_args} = zab_util:binary_to_log_index(123),
-	V = <<1:8>>,
-	{ok,B1} = {ok,<<2:64,1:64,3:64,V/binary>>} = zab_util:log_data_to_binary(#log_data{length=1,time=3,crc32=2,value=V}),
-	{error,bad_args} = zab_util:log_data_to_binary(123),
-	{ok,#log_data{length=1,crc32=2,time=3,value=V}} = zab_util:binary_to_log_data(B1),
-	{error,bad_args} = zab_util:binary_to_log_data(123),
 	
 	T = zab_util:tstamp(),
 	

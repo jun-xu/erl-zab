@@ -54,7 +54,7 @@ commit(_Zxid) ->
 
 -spec broadcast(Propasal::#propose{}) ->{error,Reason::term()} | {Zxid::integer(),Node::node()}.
 broadcast(Propasal) ->
-%% 	?INFO("~p -- receive Propasal:~p~n",[?MODULE,Propasal]),
+%% 	?INFO_F("~p -- receive Propasal:~p~n",[?MODULE,Propasal]),
 	gen_fsm:send_all_state_event(?MODULE, {broadcast,Propasal}).
 
 
@@ -69,8 +69,8 @@ broadcast(Propasal) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 init([Leader]) ->
-	{ok,{LastZxid,LastMsg}} = file_txn_log:get_last_msg(),
-	?INFO("~p -- init,leader:~p,last_zxid:~p~n",[?MODULE,Leader,LastZxid]),
+	{ok,{LastZxid,LastMsg}} = file_txn_log_ex:get_last_msg(),
+	?INFO_F("~p -- init,leader:~p,last_zxid:~p~n",[?MODULE,Leader,LastZxid]),
 	{ok,Pid} = rpc:call(Leader, zab_manager, get_sync_pid, []),
 	Ref = erlang:monitor(process, Pid),
 	gen_fsm:send_event(?MODULE, register),
@@ -106,28 +106,23 @@ init([Leader]) ->
 			?ERROR_F("~p -- recover from leader:~p error:~p~n",[?MODULE,Leader,Reason]),
 			 {stop,recover_failed,StateData};
 		{ok,#recover_response{type=?RECOVER_TYPE_TRUNC}} ->
-			?INFO("~p -- truncate last zxid:~p when recovering.~n",[?MODULE,LastZxid]),
-			ok = file_txn_log:truncate_last_zxid(),
+			?INFO_F("~p -- truncate last zxid:~p when recovering.~n",[?MODULE,LastZxid]),
+			ok = file_txn_log_ex:truncate_last_zxid(),
 			gen_fsm:send_event(?MODULE, recover),
-			{ok,{NewLastZxid,TxnLogLastMsg}} = file_txn_log:get_last_msg(),
+			{ok,{NewLastZxid,TxnLogLastMsg}} = file_txn_log_ex:get_last_msg(),
 			{next_state,?ZAB_STATE_SYNCING, StateData#state{last_zxid=NewLastZxid,last_msg=TxnLogLastMsg}};
 		{ok,#recover_response{type=?RECOVER_TYPE_DIFF,data= L,leader_last_zxid=LeaderLastZxid}} ->
-			zab_apply_server:load_msg_to_commit(LastZxid),
-			{ok,{NewLastZxid,NewLastMsg}} = sync_apply_logs(L,{LastZxid,LastMsg}),
-			gen_fsm:send_event(?MODULE, {recover,LeaderLastZxid}),
-			{next_state,?ZAB_STATE_SYNCING, StateData#state{last_zxid=NewLastZxid,last_msg=NewLastMsg}}
-			
-%% 			case  of
-%% 				{ok,{LeaderLastZxid,NewLastMsg}} ->
-%% 					?DEBUG_F("~p -- zxid diff,recover logs(~p) finished",[?MODULE,length(L)]),
-%% 					rpc:cast(Leader, zab_sync_leader, ack, [#ack{type=?ACK_TYPE_SYNC,id = node()}]),
-%% 					{ok,NewState} = loop_impl_waited_msgs(StateData#state{last_zxid=LeaderLastZxid,last_msg=NewLastMsg}),
-%% 					{next_state,?ZAB_STATE_BROADCAST, NewState};
-%% 				{ok,{NewLastZxid,NewLastMsg}} ->
-%% 					?DEBUG_F("~p -- continue recover from ~p to ~p.~n",[?MODULE,NewLastZxid,LeaderLastZxid]),
-%% 					gen_fsm:send_event(?MODULE, {recover,LeaderLastZxid}),
-%% 					{next_state,?ZAB_STATE_SYNCING, StateData#state{last_zxid=NewLastZxid,last_msg=NewLastMsg}}
-%% 			end
+			?DEBUG_F("~p -- diff of recover,leader lastzxid:~p follower:~p",[?MODULE,LeaderLastZxid,LastZxid]),
+			case LastZxid < LeaderLastZxid of
+				true ->
+					zab_apply_server:load_msg_to_commit(LastZxid),
+					{ok,{NewLastZxid,NewLastMsg}} = sync_apply_logs(L,{LastZxid,LastMsg}),
+					gen_fsm:send_event(?MODULE, {recover,LeaderLastZxid}),
+					{next_state,?ZAB_STATE_SYNCING, StateData#state{last_zxid=NewLastZxid,last_msg=NewLastMsg}};
+				false -> 
+					gen_fsm:send_event(?MODULE, {recover,LeaderLastZxid}),
+					{next_state,?ZAB_STATE_SYNCING, StateData}
+			end
 	end;
 ?ZAB_STATE_SYNCING({recover,RecoverLastZxid},#state{last_zxid=LastZxid,leader=Leader,last_msg=LastMsg}=StateData) when LastZxid >= RecoverLastZxid->
 	?DEBUG_F("~p -- recover completed.~n",[?MODULE]),
@@ -143,7 +138,7 @@ init([Leader]) ->
 			gen_fsm:send_event(?MODULE, {recover,RecoverLastZxid}),
 			{next_state,?ZAB_STATE_SYNCING, StateData#state{last_zxid=NewLastZxid,last_msg=NewLastMsg}};
 		_ ->
-			?INFO("~p -- recover failed when recover diff.~n",[?MODULE]),
+			?INFO_F("~p -- recover failed when recover diff.~n",[?MODULE]),
 			{stop, normal, StateData}
 	end.
 	
@@ -198,13 +193,14 @@ handle_event({broadcast,#propose{}} = Msg, ?ZAB_STATE_SYNCING, #state{waited_msg
 	{next_state, ?ZAB_STATE_SYNCING, StateData#state{waited_msg_list=NewWaitedMsgs}};
 handle_event({broadcast,#propose{zxid=Zxid,value=Val}}, ?ZAB_STATE_BROADCAST, #state{last_zxid=LastZxid,leader=Leader}=StateData) ->
 	ok = check_zxid_uninterrupted(Zxid,LastZxid),
-	ok = file_txn_log:append(Zxid, Val),
+	ok = file_txn_log_ex:append(Zxid, Val),
 	Ack = #ack{type=?ACK_BROADCAST,id=node(),zxid=Zxid},
 	rpc:cast(Leader, zab_sync_leader, ack, [Ack]),
+	
 	{next_state, ?ZAB_STATE_BROADCAST, StateData#state{last_zxid=Zxid,last_msg=Val}};	
 
 handle_event(Event, StateName, StateData) ->
-	?INFO("~p -- ignore event:~p on state:~p~n",[?MODULE,Event,StateName]),
+	?INFO_F("~p -- ignore event:~p on state:~p~n",[?MODULE,Event,StateName]),
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -230,7 +226,7 @@ handle_sync_event(Event, From, StateName, StateData) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 handle_info({'DOWN', Ref, process, _Pid, Reason}, StateName, #state{leader=Leader,leader_ref=Ref}=StateData) ->
-    ?INFO("~p -- leader:~p sync process down~n",[?MODULE,Leader]),
+    ?INFO_F("~p -- leader:~p sync process down~n",[?MODULE,Leader]),
 	{stop, {error,lost_leader}, StateData};
 
 handle_info(Info, StateName, StateData) ->
@@ -257,7 +253,7 @@ code_change(OldVsn, StateName, StateData, Extra) ->
 %% --------------------------------------------------------------------
 loop_impl_waited_msgs(#state{waited_msg_list=[]} = State) -> {ok,State};
 loop_impl_waited_msgs(#state{waited_msg_list=[{broadcast,#propose{zxid=Zxid,value=Val}}|T]} = State) ->
-	case file_txn_log:append(Zxid, Val) of
+	case file_txn_log_ex:append(Zxid, Val) of
 		ok -> ok;
 		{error,ignored} -> ok
 	end,
@@ -270,23 +266,22 @@ loop_impl_waited_msgs(#state{waited_msg_list=[{commit,Zxid}|T],last_zxid=FZxid,l
 	zab_apply_server:load_msg_to_commit(Zxid),
 	loop_impl_waited_msgs(State#state{waited_msg_list=T,last_zxid=Zxid,last_msg=Msg});
 loop_impl_waited_msgs(#state{waited_msg_list=[{commit,Zxid}|T]} = State) ->
-	?DEBUG_F("~p -- already commited zxid:~p~n",[?MODULE,Zxid]),
+	?DEBUG_F("~p -- waited already commited zxid:~p~n",[?MODULE,Zxid]),
 	loop_impl_waited_msgs(State#state{waited_msg_list=T}).
 
 
 sync_apply_logs([],{Zxid,Data}) -> {ok,{Zxid,Data}};
 sync_apply_logs([{Zxid,Data}|T],_) ->
-	ok = file_txn_log:append(Zxid, Data),
+	ok = file_txn_log_ex:append(Zxid, Data),
 	zab_apply_server:commit(Zxid,Data),
 	sync_apply_logs(T,{Zxid,Data}).
 
-
+check_zxid_uninterrupted(Zxid,CurLastZxid) when (CurLastZxid + 1) == Zxid ->
+	ok;
 check_zxid_uninterrupted(Zxid,CurLastZxid) ->
 	{Repoch,Rcounter} = zab_util:split_zxid(Zxid),
-	{Curepoch,Curcounter} = zab_util:split_zxid(CurLastZxid),
-	if
-		Curepoch == Repoch andalso Curcounter+1 == Rcounter ->
-			ok;
+	{Curepoch,_Curcounter} = zab_util:split_zxid(CurLastZxid),
+	if 
 		Curepoch < Repoch andalso Rcounter == 1 ->
 			ok;
 		true ->

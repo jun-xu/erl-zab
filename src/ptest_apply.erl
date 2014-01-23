@@ -1,8 +1,8 @@
-%% Author: clues
-%% Created: Apr 27, 2013
+%% Author: zj
+%% Created: jan 9, 2014
 %% Description: TODO: Add description to arithmetic
 %% just for test only !!!
--module(math_apply).
+-module(ptest_apply).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
@@ -15,9 +15,10 @@
 %% External exports
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3,
+		 compare/0]).
 
--record(state, {init=0,seqno=0,result=0}).
+-record(state, {total=0,count=0,from =undefined,timer}).
 
 %% ====================================================================
 %% External functions
@@ -42,7 +43,7 @@ start_link() ->
 %% 	gen_server:call(?MODULE, get_state).
 
 call(Msg) ->
-	gen_server:call(?MODULE,Msg).
+	gen_server:call(?MODULE,Msg,20000).
 
 result() ->
 	gen_server:call(?MODULE, result).
@@ -68,6 +69,7 @@ stop() ->
 init([]) ->
     {ok, #state{}}.
 
+
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
 %% Description: Handling call messages
@@ -78,41 +80,62 @@ init([]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call({reset,N}, _From, State) ->
-	?DEBUG_F("~p -- reset init value is:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{init=N,result=N,seqno=0}};
+handle_call({init,Total},_From,State = #state{count=_C,total=_T}) ->
+	{reply,ok,State#state{total=Total,count=0}};
 
-handle_call({plus,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- plus:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=N+Val,seqno=Seqno+1}};
+handle_call(plus,_From,State = #state{from=F,timer=Ref,count=C,total=T}) ->
+	NewCount = C + 1,
+	case T - NewCount of
+		0 ->
+			case Ref of
+				undefined ->
+					{reply,ok,State#state{count=NewCount}};
+				_ ->
+					gen_server:reply(F, {ok,finished}),
+					timer:cancel(Ref),
+					{reply,ok,State#state{from=undefined,timer=undefined}}
+			end;
+		_ ->
+			{reply,ok,State#state{count=NewCount}}
+	end;
 
-handle_call({minus,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- minus:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=Val-N,seqno=Seqno+1}};
+handle_call({plus,_},_From,State = #state{from=F,timer=Ref,count=C,total=T}) ->
+	NewCount = C + 1,
+	case T - NewCount of
+		0 ->
+			case Ref of
+				undefined ->
+					{reply,ok,State#state{count=NewCount}};
+				_ ->
+					gen_server:reply(F, {ok,finished}),
+					timer:cancel(Ref),
+					{reply,ok,State#state{from=undefined,timer=undefined}}
+			end;
+		_ ->
+			{reply,ok,State#state{count=NewCount}}
+	end;
+	
+	
 
-handle_call({times,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- times:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=Val*N,seqno=Seqno+1}};
+handle_call(compare, _From, State = #state{total=T,count=C}) ->
+	case T > 0 of
+		true ->
+			case T - C of
+				0 ->
+					{reply,{ok,finished},State#state{timer=undefined,from=undefined}};
+				_ ->
+					{ok,Ref} = timer:send_interval(100, compareValue),
+					{noreply,State#state{from=_From,timer=Ref}} 
+			end
+	end;
+%%     {reply, ok,State};
 
-handle_call({divide,N}, _From, #state{result=Val,seqno=Seqno}=State) ->
-%% 	?DEBUG_F("~p -- divide:~p~n",[?MODULE,N]),
-    {reply, ok,State#state{result=Val div N,seqno=Seqno+1}};
 
-handle_call(result, _From, #state{init=Int,result=Val,seqno=Seqno}=State) ->
-    {reply, {Val,Seqno,Int}, State};
+handle_call(getValue,_From,State = #state{from=F,timer=Ref,count=C,total=T}) ->
+	{reply,{C,T},State};
 
-handle_call({error,test}, _From, State) ->
-    {reply, {error,test},State};
-
-handle_call({error,exit_pid_test}, _From, State) ->
-    {reply, {'EXIT',self(),failed},State};
-
-handle_call(stop,_,State) ->
-	{stop, normal, ok, State};
-
-handle_call(Request, From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call(_,_,State) ->
+	 {reply, ok, State}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_cast/2
@@ -131,6 +154,21 @@ handle_cast(Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_info({compareValue,Pid}, State=#state{timer=Ref,from=F,total=T,count=C}) ->
+	case C > 0 of
+		true ->
+			case T - C of
+				0 ->
+					gen_server:reply(Pid, {ok,finished}),
+					timer:cancel(Ref),
+					{noreply,State#state{timer=undefined,from=undefined}};
+				_ ->
+					{noreply, State}
+			end;
+		_ ->
+			{noreply, State}
+	end;
+
 handle_info(Info, State) ->
     {noreply, State}.
 
@@ -153,3 +191,10 @@ code_change(OldVsn, State, Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
+
+compare() ->
+	gen_server:call(?MODULE,compare,20*1000).
+			
+	
+	
+	

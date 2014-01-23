@@ -36,7 +36,8 @@
 				current_req = undefined,
 				timer,
 				current_epoch,
-				waited_msgs= []}).
+				waited_msgs= queue:new()
+			   }).
 
 %% ====================================================================
 %% External functions
@@ -75,30 +76,30 @@ stop(Reason) ->
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
 init([1]) ->
-	{ok,LastZxid} = file_txn_log:get_last_zxid(),
+	{ok,LastZxid} = file_txn_log_ex:get_last_zxid(),
 	{ok,LastCommitZxid} = zab_apply_server:get_last_commit_zxid(),
 	{Epoch,_} = zab_util:split_zxid(LastZxid),
-	?INFO("~p -- start quorum:1, lastZxid:~p, lastCommitZxid:~p new era:~p~n",[?MODULE,LastZxid,LastCommitZxid,Epoch+1]),
+	?INFO_F("~p -- start quorum:1, lastZxid:~p, lastCommitZxid:~p new era:~p~n",[?MODULE,LastZxid,LastCommitZxid,Epoch+1]),
 	case LastZxid > LastCommitZxid of
 		true ->
-			?INFO("~p -- commit all msg between ~p to ~p~n",[?MODULE,LastCommitZxid,LastZxid]),
+			?INFO_F("~p -- commit all msg between ~p to ~p~n",[?MODULE,LastCommitZxid,LastZxid]),
 			zab_apply_server:load_msg_to_commit(LastZxid),
 			ok;
 		false -> ok
 	end,
 	{ok, ?ZAB_STATE_BROADCAST, #state{current_epoch=Epoch+1,quorum=1,last_zxid=LastZxid,lastCommitZxid=LastCommitZxid,timer=undefined}};
 init([Quorum]) ->
-	{ok,LastZxid} = file_txn_log:get_last_zxid(),
+	{ok,LastZxid} = file_txn_log_ex:get_last_zxid(),
 	{ok,LastCommitZxid} = zab_apply_server:get_last_commit_zxid(),
 	{Epoch,_} = zab_util:split_zxid(LastZxid),
-	?INFO("~p -- start quorum:~p, lastZxid:~p, lastCommitZxid:~p new era:~p~n",[?MODULE,Quorum,LastZxid,LastCommitZxid,Epoch]),
+	?INFO_F("~p -- start quorum:~p, lastZxid:~p, lastCommitZxid:~p new era:~p~n",[?MODULE,Quorum,LastZxid,LastCommitZxid,Epoch]),
 	{State,Timer1} = case LastZxid of
 						LastCommitZxid ->
-							?INFO("~p -- lastZxid:~p equal to commitZxid:~p, change to ~p state.~n",[?MODULE,LastZxid,LastCommitZxid,syncing]),
+							?INFO_F("~p -- lastZxid:~p equal to commitZxid:~p, change to ~p state.~n",[?MODULE,LastZxid,LastCommitZxid,syncing]),
 							{?ZAB_STATE_SYNCING,undefined};
 						_ ->
 							%% when last zxid isnot commited,should be checked.
-							?INFO("~p -- lastZxid:~p but commitZxid:~p, change to ~p state.~n",[?MODULE,LastZxid,LastCommitZxid,recovering]),
+							?INFO_F("~p -- lastZxid:~p but commitZxid:~p, change to ~p state.~n",[?MODULE,LastZxid,LastCommitZxid,recovering]),
 							Timer = gen_fsm:send_event_after(?DEFAULT_TIMEOUT_INIT, {error,leader_checked_timeout}),
 							{?ZAB_STATE_RECOVERING,Timer}
 					 end,
@@ -138,7 +139,7 @@ state_name(Event, StateData) ->
 %%          {stop, Reason, Reply, NewStateData}
 %% --------------------------------------------------------------------
 state_name(Event, From, StateData) ->
-	?INFO("~p -- not implement event ~p ~n",[?MODULE,Event]),
+	?INFO_F("~p -- not implement event ~p ~n",[?MODULE,Event]),
     {reply, ok, state_name, StateData}.
 
 %% --------------------------------------------------------------------
@@ -161,7 +162,7 @@ handle_event(#ack{type=?ACK_TYPE_SYNC,id=Id}=Ack, ?ZAB_STATE_SYNCING,
 					NewList = [Id|AckList],
 					if
 						length(NewList) +1 >= Q ->
-							?INFO("~p -- start quorum:~p, lastZxid:~p, lastCommitZxid:~p new era:~p~n",[?MODULE,Q,LastZxid,LastCommitZxid,Epoch+1]),
+							?INFO_F("~p -- start quorum:~p, lastZxid:~p, lastCommitZxid:~p new era:~p~n",[?MODULE,Q,LastZxid,LastCommitZxid,Epoch+1]),
 							{next_state, ?ZAB_STATE_BROADCAST, StateData#state{current_epoch=Epoch+1,ack_list=[]}};
 						true ->
 							{next_state, ?ZAB_STATE_SYNCING, StateData#state{ack_list=NewList}}
@@ -170,31 +171,57 @@ handle_event(#ack{type=?ACK_TYPE_SYNC,id=Id}=Ack, ?ZAB_STATE_SYNCING,
 	end;
 
 handle_event(#ack{type=?ACK_BROADCAST,id=FNode,zxid=Zxid}, ?ZAB_STATE_BROADCAST, 
-			 #state{follower_nodes=Nodes,ack_list=L,quorum=Q,current_req={Zxid,Caller,Msg},timer=Timer,waited_msgs=Waites}=StateData) ->
+			 #state{current_epoch=Cepoch,last_zxid=LastZxid,follower_nodes=Nodes,ack_list=L,quorum=Q,current_req={Zxid,Caller,Msg},
+					timer=Timer,waited_msgs=Waites}=StateData) ->
 	case lists:member(FNode, L) of
 		false ->
 			NewList = [FNode|L],
 			if length(NewList) +1 >= Q ->
 				   	zab_util:notify_caller(Caller, {ok,Zxid}),
 					zab_apply_server:commit(Zxid,Msg),
-%% 					Nodes = lists:foldl(fun(#follower_info{id=Id},AccIn) ->[Id|AccIn] end, [], Followers),
 					lists:foreach(fun(Node) ->
 								  rpc:cast(Node, zab_sync_follower, commit, [Zxid]) end,Nodes),
 					
 					cancel_timer(Timer),
-					case Waites of
-						[] -> ok;
-						_ -> self() ! broadcast_next_msg
-					end,
-					
-					{next_state, ?ZAB_STATE_BROADCAST, StateData#state{ack_list=[],current_req=undefined,timer=undefined}};
+					case queue:is_empty(Waites) of
+						true -> 
+							{next_state, ?ZAB_STATE_BROADCAST, StateData#state{ack_list=[],current_req=undefined,timer=undefined}};
+						false ->
+							{GroupCallers,GroupMsgs,NewWaiteds} = group_msgs(Waites,?DEFAULT_GROUP_MSGS_SIZE,[],[]),
+							NewMsg = term_to_binary({group,GroupMsgs}),
+							NewZxid = generate_new_zxid(Cepoch,LastZxid),
+							ok = file_txn_log_ex:append(NewZxid, NewMsg),
+							lists:foreach(fun(Node) ->
+						 			rpc:cast(Node, zab_sync_follower, broadcast, [#propose{zxid=NewZxid,value=NewMsg}]) end, Nodes),
+							NewTimer = gen_fsm:send_event_after(?DEFAULT_TIMEOUT_SYNC, {boradcast_timeout,NewZxid}),
+							{next_state, ?ZAB_STATE_BROADCAST, StateData#state{waited_msgs=NewWaiteds,last_zxid=NewZxid,timer=NewTimer,
+																			   current_req={NewZxid,GroupCallers,NewMsg}}}
+							
+					end;
 				true ->
 					{next_state, ?ZAB_STATE_BROADCAST, StateData#state{ack_list=NewList}}
 			end;
 		true ->
 			{next_state, ?ZAB_STATE_BROADCAST, StateData}
 	end;
-	
+
+handle_event(boradcast_ack, ?ZAB_STATE_BROADCAST, 
+			 #state{current_epoch=Cepoch,last_zxid=LastZxid,quorum=1,current_req={Zxid,Caller,Msg},waited_msgs=Waites}=StateData) ->
+	zab_util:notify_caller(Caller, {ok,Zxid}),
+	zab_apply_server:commit(Zxid,Msg),
+	case queue:is_empty(Waites) of
+		true -> 
+			{next_state, ?ZAB_STATE_BROADCAST, StateData#state{current_req=undefined}};
+		false ->
+			
+			{GroupCallers,GroupMsgs,NewWaiteds} = group_msgs(Waites,?DEFAULT_GROUP_MSGS_SIZE,[],[]),
+			NewMsg = term_to_binary({group,GroupMsgs}),
+			NewZxid = generate_new_zxid(Cepoch,LastZxid),
+			ok = file_txn_log_ex:append(NewZxid, NewMsg),
+			gen_fsm:send_all_state_event(?MODULE, boradcast_ack),
+			{next_state, ?ZAB_STATE_BROADCAST, StateData#state{waited_msgs=NewWaiteds,last_zxid=NewZxid,
+																			   current_req={NewZxid,GroupCallers,NewMsg}}}
+	end;
 
 handle_event({stop,Reason}, _StateName, StateData)  ->
 	?ERROR_F("~p -- stop sync process with reason:~p~n",[?MODULE,Reason]),
@@ -202,29 +229,44 @@ handle_event({stop,Reason}, _StateName, StateData)  ->
 
 %% bordcast msg.
 %% if quorm == 1, self node is leader and follower, sync msg local.
-handle_event({boradcast,Msg,Caller}, ?ZAB_STATE_BROADCAST,#state{quorum=1,current_epoch=Cepoch,last_zxid=LastZxid}=StateData) ->
-	
+%% handle_event({boradcast,Msg,Caller}, ?ZAB_STATE_BROADCAST,#state{quorum=1,current_epoch=Cepoch,last_zxid=LastZxid}=StateData) ->
+%% 	NewZxid = generate_new_zxid(Cepoch,LastZxid),
+%% %% 	?DEBUG_F("~p -- sync msg:~p zxid:~p~n",[?MODULE,Msg,NewZxid]),
+%% 	ok = file_txn_log_ex:append(NewZxid, Msg),
+%% 	zab_apply_server:commit(NewZxid,Msg),
+%% 	zab_util:notify_caller(Caller, {ok,NewZxid}),
+%% 	{next_state, ?ZAB_STATE_BROADCAST,StateData#state{last_zxid=NewZxid}};
+handle_event({boradcast,Msg,Caller}, ?ZAB_STATE_BROADCAST,#state{quorum=1,waited_msgs=Waiteds,current_req=undefined,
+																 current_epoch=Cepoch,last_zxid=LastZxid}=StateData) ->
 	NewZxid = generate_new_zxid(Cepoch,LastZxid),
+	{GroupCallers,GroupMsgs,NewWaiteds} = group_msgs(queue:in({Msg,Caller}, Waiteds),?DEFAULT_GROUP_MSGS_SIZE,[],[]),
+	NewMsg = term_to_binary({group,GroupMsgs}),
 %% 	?DEBUG_F("~p -- sync msg:~p zxid:~p~n",[?MODULE,Msg,NewZxid]),
-	ok = file_txn_log:append(NewZxid, Msg),
-	zab_apply_server:commit(NewZxid,Msg),
-	zab_util:notify_caller(Caller, {ok,NewZxid}),
-	{next_state, ?ZAB_STATE_BROADCAST,StateData#state{last_zxid=NewZxid}};
+	ok = file_txn_log_ex:append(NewZxid, NewMsg),
+	gen_fsm:send_all_state_event(?MODULE, boradcast_ack),
+%% 	
+%% 	zab_apply_server:commit(NewZxid,NewMsg),
+%% 	zab_util:notify_caller(GroupCallers, {ok,NewZxid}),
+	{next_state, ?ZAB_STATE_BROADCAST,StateData#state{current_req={NewZxid,GroupCallers,NewMsg},
+													  waited_msgs=NewWaiteds,last_zxid=NewZxid}};
+handle_event({boradcast,Msg,Caller}, ?ZAB_STATE_BROADCAST, #state{quorum=1,waited_msgs=Waited}=StateData) ->
+	{next_state, ?ZAB_STATE_BROADCAST, StateData#state{waited_msgs=queue:in({Msg,Caller},Waited)}};
+
 %% other, notify all followers to sync msg. ex.include all not recovered followers.
 handle_event({boradcast,Msg,Caller}, ?ZAB_STATE_BROADCAST, 
-				  #state{current_epoch=Cepoch,follower_nodes=Nodes,current_req=undefined,last_zxid=LastZxid,timer=undefined}=StateData) ->
+				  #state{current_epoch=Cepoch,follower_nodes=Nodes,waited_msgs={[],[]},current_req=undefined,last_zxid=LastZxid,timer=undefined}=StateData) ->
 	NewZxid = generate_new_zxid(Cepoch,LastZxid),
-	ok = file_txn_log:append(NewZxid, Msg),
-%% 	Nodes = lists:foldl(fun(#follower_info{id=Id},AccIn) ->[Id|AccIn] end, [], L),
 	lists:foreach(fun(Node) ->
 						  rpc:cast(Node, zab_sync_follower, broadcast, [#propose{zxid=NewZxid,value=Msg}]) end, Nodes),
+	ok = file_txn_log_ex:append(NewZxid, Msg),
 	Timer = gen_fsm:send_event_after(?DEFAULT_TIMEOUT_SYNC, {boradcast_timeout,NewZxid}),
 	{next_state, ?ZAB_STATE_BROADCAST, StateData#state{last_zxid=NewZxid,timer=Timer,current_req={NewZxid,Caller,Msg}}};
+	
 %% push to waited list when pre msg is not been down.
 handle_event({boradcast,Msg,Caller}, ?ZAB_STATE_BROADCAST, #state{waited_msgs=Waited}=StateData) ->
-	{next_state, ?ZAB_STATE_BROADCAST, StateData#state{waited_msgs=[{Msg,Caller}|Waited]}};
+	{next_state, ?ZAB_STATE_BROADCAST, StateData#state{waited_msgs=queue:in({Msg,Caller},Waited)}};
 handle_event({boradcast,Msg,Caller}, StateName, StateData) ->
-	?INFO("~p -- sync msg:~p error:leader_unavailable in ~p.~n",[?MODULE,Msg,StateName]),
+	?INFO_F("~p -- sync msg:~p error:leader_unavailable in ~p.~n",[?MODULE,Msg,StateName]),
 	zab_util:notify_caller(Caller, {error,leader_unavailable}),
     {next_state, StateName, StateData};
 
@@ -246,7 +288,7 @@ handle_sync_event(get_state, _From, StateName, StateData) ->
 
 handle_sync_event({register,#follower_info{id=Id}=Follower}, _From, ?ZAB_STATE_RECOVERING, 
 				  #state{followers=L,follower_nodes=FL,quorum=Q,timer=Timer,last_zxid=LastZxid,lastCommitZxid=LastCommitZxid}=StateData) ->
-	?INFO("~p -- register node info:~p~n",[?MODULE,Follower]),
+	?INFO_F("~p -- register node info:~p~n",[?MODULE,Follower]),
 	case lists:member(Id, FL) of
 		false ->
 			Ref = erlang:monitor(process, {zab_sync_follower,Id}),
@@ -268,7 +310,7 @@ handle_sync_event({register,#follower_info{id=Id}=Follower}, _From, ?ZAB_STATE_R
 
 handle_sync_event({register,#follower_info{id=Id}=Follower}, _From, StateName, 
 				  #state{followers=L,follower_nodes=FL}=StateData) ->
-	?INFO("~p -- register node info:~p~n",[?MODULE,Follower]),
+	?INFO_F("~p -- register node info:~p~n",[?MODULE,Follower]),
 	{NewFollowers,NewFL} = case lists:member(Id, FL) of
 		false ->
 			Ref = erlang:monitor(process, {zab_sync_follower,Id}),
@@ -285,18 +327,16 @@ handle_sync_event({recover,#follower_info{id=Id}=Follower}, _From, StateName,
 				  #state{followers=L,last_zxid=LastZxid}=StateData) ->
 	case lists:keyfind(Id, 2, L) of
 		false ->
-			?INFO("~p -- not register of follower:~p when recover.~n",[?MODULE,Follower]),
+			?INFO_F("~p -- not register of follower:~p when recover.~n",[?MODULE,Follower]),
 			{reply, {error,not_register}, StateName, StateData};
 		_ ->
-			?INFO("~p -- recover node info:~p~n",[?MODULE,Follower]),
+			?INFO_F("~p -- recover node info:~p~n",[?MODULE,Follower]),
 			Response = recover_follower(Follower,LastZxid),
-%% 			?DEBUG_F("~p -- response to follower:~p info:~p~n",[?MODULE,Id,Response]),
     		{reply, Response, StateName, StateData}
 	end;
 
 handle_sync_event(Event, From, StateName, StateData) ->
-    Reply = ok,
-    {reply, Reply, StateName, StateData}.
+    {reply, ok, StateName, StateData}.
 
 %% --------------------------------------------------------------------
 %% Func: handle_info/3
@@ -304,12 +344,10 @@ handle_sync_event(Event, From, StateName, StateData) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-
-
 handle_info({'DOWN', Ref, process, _Pid, Reason}, StateName, #state{quorum=Quorum,followers=Followers,follower_nodes=FL}=StateData) ->
 	case lists:keyfind(Ref, 5, Followers) of
 		#follower_info{id=Id} ->
-			?INFO("~p -- follower:~p sync process down with reason:~p~n",[?MODULE,Id,Reason]),
+			?INFO_F("~p -- follower:~p sync process down with reason:~p~n",[?MODULE,Id,Reason]),
 			NewFollowers = lists:keydelete(Id, 2, Followers),
 			NewFL = lists:delete(Id, FL),
 %% 			zab_util:notify_caller(zab_manager,{follower_down,Id}),
@@ -324,24 +362,12 @@ handle_info({'DOWN', Ref, process, _Pid, Reason}, StateName, #state{quorum=Quoru
 			{next_state, StateName, StateData}
 	end;
 
-%% handle waited msg.
-handle_info(broadcast_next_msg,?ZAB_STATE_BROADCAST,#state{current_epoch=Cepoch,follower_nodes=Nodes,waited_msgs=[{Msg,Caller}|T],
-													 current_req=undefined,last_zxid=LastZxid,timer=undefined}=StateData) ->
-	NewZxid = generate_new_zxid(Cepoch,LastZxid),
-	ok = file_txn_log:append(NewZxid, Msg),
-%% 	Nodes = lists:foldl(fun(#follower_info{id=Id},AccIn) ->[Id|AccIn] end, [], L),
-	lists:foreach(fun(Node) ->
-						  rpc:cast(Node, zab_sync_follower, broadcast, [#propose{zxid=NewZxid,value=Msg}]) end, Nodes),
-	Timer = gen_fsm:send_event_after(?DEFAULT_TIMEOUT_SYNC, {boradcast_timeout,NewZxid}),
-	{next_state, ?ZAB_STATE_BROADCAST, StateData#state{waited_msgs=T,last_zxid=NewZxid,timer=Timer,current_req={NewZxid,Caller,Msg}}};
-
-
 handle_info({error,lost_quorum}, ?ZAB_STATE_BROADCAST, StateData) ->
 	?ERROR_F("~p -- lost quorum.~n",[?MODULE]),	
 	{stop, normal, StateData};
 	
 handle_info({error,Reason}, StateName, StateData) ->
-	?ERROR_F("~p -- error,with reason:~p,process will stop~n",[?MODULE,Reason]),
+	?ERROR_F("~p -- error,with reason:~p,process will stop,state:~p~n",[?MODULE,Reason,StateName]),
     {stop, {error,Reason}, StateData};
 
 handle_info(Info, StateName, StateData) ->
@@ -354,7 +380,7 @@ handle_info(Info, StateName, StateData) ->
 %% Returns: any
 %% --------------------------------------------------------------------
 terminate(Reason, StateName,#state{waited_msgs=Msgs,current_req=Req} = StatData) ->
-	?INFO("~p -- terminate by reason:~p in state:~p~n",[?MODULE,Reason,StateName]),
+	?INFO_F("~p -- terminate by reason:~p in state:~p~n",[?MODULE,Reason,StateName]),
 	notify_all_waited_msg(Msgs),
 	case Req of
 		undefined -> ok;
@@ -393,7 +419,7 @@ recover_follower(#follower_info{last_zxid=LastZxid},LeaderLastZxid) ->
 	Req = #recover_response{leader_last_zxid=LeaderLastZxid},
 	if
 		LastZxid =< LeaderLastZxid ->
-			case file_txn_log:load_logs(LastZxid,?RECOVER_LOAD_TXNLOG_PER_STEP) of
+			case file_txn_log_ex:load_logs(LastZxid,?RECOVER_LOAD_TXNLOG_PER_STEP) of
 				{ok,L} ->
 					{ok,Req#recover_response{type=?RECOVER_TYPE_DIFF,leader_last_zxid=LeaderLastZxid,data=L}};
 				{error,not_found} ->
@@ -412,14 +438,14 @@ check_last_zxid(Followers,Q,LastZxid) when length(Followers) >= Q->
 	if
 		Match+1 >= Q -> 
 			%% when last zxid is valid, commit it.
-			?INFO("~p -- check last zxid:~p ok.~n",[?MODULE,LastZxid]),
+			?INFO_F("~p -- check last zxid:~p ok.~n",[?MODULE,LastZxid]),
 			zab_apply_server:load_msg_to_commit(LastZxid),
 			{ok,LastZxid};
 		UnMatch >= Q ->
 			%% when last zxid is invalid, truncate it.
-			?INFO("~p -- truncate last zxid:~p after checked.~n",[?MODULE,LastZxid]),
-			ok = file_txn_log:truncate_last_zxid(),
-			{ok,NewLastZxid} = file_txn_log:get_last_zxid(),
+			?INFO_F("~p -- truncate last zxid:~p after checked.~n",[?MODULE,LastZxid]),
+			ok = file_txn_log_ex:truncate_last_zxid(),
+			{ok,NewLastZxid} = file_txn_log_ex:get_last_zxid(),
 			{ok,NewLastZxid};				
 		true ->
 			incomplete
@@ -427,24 +453,25 @@ check_last_zxid(Followers,Q,LastZxid) when length(Followers) >= Q->
 check_last_zxid(_,_,_) -> incomplete.
 
 generate_new_zxid(CEpoch,LastZxid) ->
-	case zab_util:split_zxid(LastZxid) of
-		{CEpoch,_} ->
-			LastZxid+1;
-		{Epoch,_} when Epoch < CEpoch->
+	case LastZxid bsr 48 of
+		CEpoch -> LastZxid + 1;
+		_ ->
 			<<NewZxid:64>> = <<CEpoch:16,1:48>>,
 			NewZxid
 	end.
-
-
 
 cancel_timer(undefined) -> ok;
 cancel_timer(Timer) -> gen_fsm:cancel_timer(Timer).
 
 
-notify_all_waited_msg([]) -> ok;
-notify_all_waited_msg([{_,Caller}|T]) ->
-	catch zab_util:notify_caller(Caller, {error,stop}),
-	notify_all_waited_msg(T).
+%% notify_all_waited_msg({[],[]}) -> ok;
+notify_all_waited_msg(Waiteds) ->
+	case queue:out(Waiteds) of
+		{empty,_Q} -> ok;
+		{{value,{_Msg,Caller}},Q} ->
+			catch zab_util:notify_caller(Caller, {error,stop}),
+			notify_all_waited_msg(Q)
+	end.
 
 
 %% check all zxid between LastCommitZxid to LastZxid. one by one increase.
@@ -465,10 +492,16 @@ loop_check_last_zxid(Followers,Q,LastZxid,LastCommitZxid) ->
 			loop_check_last_zxid(Followers, Q, NewLastZxid, LastCommitZxid)
 	end.
 
-
-
-
-
-
+-spec group_msgs(Waiteds::queue(),Size::integer(),Callers::[pid()],Msgs::[any()]) -> {NewGroupCallers::[pid()],NewGroupMsgs::[any()],NewWaiteds::queue()}.
+group_msgs(Waiteds,0,GroupCallers,GroupMsgs) -> {lists:reverse(GroupCallers),lists:reverse(GroupMsgs),Waiteds};
+group_msgs(Waiteds,Size,GroupCallers,GroupMsgs) ->
+	case queue:out(Waiteds) of
+		{empty,_Q} -> {lists:reverse(GroupCallers),lists:reverse(GroupMsgs),queue:new()};
+		{{value,{Msg,Caller}},Q} ->
+			group_msgs(Q, Size - 1, [Caller|GroupCallers], [Msg|GroupMsgs])
+	end.
+	
+	
+	
 
 

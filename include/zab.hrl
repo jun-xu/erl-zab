@@ -2,6 +2,9 @@
 -define(APP_NAME,zab).
 -define(ZAB_TYPE,skyfs_zab).
 
+%% group msgs.
+-define(DEFAULT_GROUP_MSGS_SIZE,10).
+
 %% server state
 -define(SERVER_STATE_LOOKING,0).
 -define(SERVER_STATE_FOLLOWING,1).
@@ -33,17 +36,17 @@
 -endif.
 
 -ifdef('TEST').
--define(MAX_MSG_QUEUE_LEN,1000).
+%% -define(MAX_MSG_QUEUE_LEN,1000).
 -define(TIME_OUT_WRITE,timer:seconds(5)).
 -define(DEFAULT_TIMEOUT_SYNC,timer:seconds(2)).
 -define(DEFAULT_TIMEOUT_INIT,timer:seconds(3)).
 -define(DEFAULT_TIMEOUT_RECOVER,timer:seconds(20)).
 -else.
--define(MAX_MSG_QUEUE_LEN,1000).
--define(TIME_OUT_WRITE,timer:seconds(15)).
--define(DEFAULT_TIMEOUT_SYNC,timer:seconds(2)).
--define(DEFAULT_TIMEOUT_INIT,timer:seconds(5)).
--define(DEFAULT_TIMEOUT_RECOVER,timer:seconds(20)).
+%% -define(MAX_MSG_QUEUE_LEN,1000).
+-define(TIME_OUT_WRITE,timer:seconds(30)).
+-define(DEFAULT_TIMEOUT_SYNC,timer:seconds(6)).
+-define(DEFAULT_TIMEOUT_INIT,timer:seconds(20)).
+-define(DEFAULT_TIMEOUT_RECOVER,timer:seconds(60)).
 -endif.
 
 
@@ -52,7 +55,7 @@
 -define(COMMIT_ZXID_SIZE_PER_PAGE,32).
 -else.
 -define(MAX_APPLY_LEN,200).
--define(COMMIT_ZXID_SIZE_PER_PAGE,32*1024).
+-define(COMMIT_ZXID_SIZE_PER_PAGE,1024*1024).
 -endif.
 
 -define(ZAB_STATE_RECOVERING,recoving).

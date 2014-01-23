@@ -11,7 +11,6 @@
 %% Include files
 %% --------------------------------------------------------------------
 -include("zab.hrl").
--include("txnlog.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/file.hrl").
 %% --------------------------------------------------------------------
@@ -68,6 +67,7 @@ clear_callback() ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+%% 	process_flag(priority, high),
 	ApplyMod = case zab_util:get_app_env(apply_mod, [], undefined) of
 				  undefined ->
 					  ?WARN_F("~p -- no apply fun ...~n",[?MODULE]),
@@ -76,7 +76,7 @@ init([]) ->
 			   end,
 %% 	Dir = zab_util:get_app_env(snapshot_dir, [], "./"),
 	{FD,LastCommitZxid,Offset} = load_last_commit(),
-	?INFO("~p -- start with apply mod:~p with last commit zxid:~p~n",[?MODULE,ApplyMod,LastCommitZxid]),
+	?INFO_F("~p -- start with apply mod:~p with last commit zxid:~p~n",[?MODULE,ApplyMod,LastCommitZxid]),
     {ok, #state{fd=FD,offset=Offset,last_commit_zxid=LastCommitZxid,apply_mod=ApplyMod}}.
 
 %% --------------------------------------------------------------------
@@ -91,11 +91,11 @@ init([]) ->
 %% --------------------------------------------------------------------
 
 handle_call({rest_callback,Mod,Fun}, _From, State) ->
-	?INFO("~p -- reset apply mod:~p~n",[?MODULE,{Mod,Fun}]),
+	?INFO_F("~p -- reset apply mod:~p~n",[?MODULE,{Mod,Fun}]),
     {reply, ok, State#state{apply_mod={Mod,Fun}}};
 
 handle_call(clear_callback, _From, State) ->
-	?INFO("~p -- clear_callback apply mod.~n",[?MODULE]),
+	?INFO_F("~p -- clear_callback apply mod.~n",[?MODULE]),
     {reply, ok, State#state{apply_mod=undefined}};
 
 
@@ -103,12 +103,12 @@ handle_call(get_last_commit_zxid, _From, #state{last_commit_zxid=Zxid}=State) ->
     {reply, {ok,Zxid}, State};
 
 handle_call({stop,Reason}, _From,#state{fd=FD} = State) ->
-	?INFO("~p -- stop by reason:~p~n",[?MODULE,Reason]),
+	?INFO_F("~p -- stop by reason:~p~n",[?MODULE,Reason]),
 	prim_file:close(FD),
 	{stop, normal, ok, State};
 
 handle_call(Request, _From, State) ->
-	?INFO("~p -- not implement call:~p~n",[?MODULE,Request]),
+	?INFO_F("~p -- not implement call:~p~n",[?MODULE,Request]),
     {reply, ok, State}.
 
 %% --------------------------------------------------------------------
@@ -119,7 +119,7 @@ handle_call(Request, _From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_cast({commit,Zxid,_}, #state{last_commit_zxid=LastZxid} = State) when Zxid =< LastZxid ->
-	?INFO("~p -- already commit zxid:~p.~n",[?MODULE,Zxid]),
+	?INFO_F("~p -- already commit zxid:~p.~n",[?MODULE,Zxid]),
     {noreply, State};
 
 handle_cast({commit,Zxid,_}, #state{apply_mod=undefined,fd=Fd,offset=Offset} = State) ->
@@ -133,16 +133,16 @@ handle_cast({commit,Zxid,Msg}, #state{apply_mod={M,F},fd=Fd,offset=Offset} = Sta
 			{NewFd,NewOffset} = dump_to_file(Zxid, Fd, Offset),
 			{noreply, State#state{last_commit_zxid=Zxid,fd=NewFd,offset=NewOffset}};
 		E ->
-			?INFO("~p -- commit msg:~p error:~p, stop.~n",[?MODULE,Zxid,E]),
+			?INFO_F("~p -- commit msg:~p error:~p, stop.~n",[?MODULE,Zxid,E]),
 			{stop, normal, State}    
 	end;
 
 handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=LastZxid} = State) when Zxid =< LastZxid ->
-	?INFO("~p -- already commit:~p~n",[?MODULE,Zxid]),
+	?INFO_F("~p -- already commit:~p~n",[?MODULE,Zxid]),
     {noreply, State};
 handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_mod=undefined,fd=Fd,offset=Offset} = State) ->
 	?WARN_F("~p -- ignore zxid:~p msg by reason:~p~n",[?MODULE,Zxid,no_apply_function]),
-	case file_txn_log:load_logs(CommitedId) of
+	case file_txn_log_ex:load_logs(CommitedId) of
 		{error,E} ->
 			?WARN_F("~p -- load msgs to commit between ~p to ~p error:~p when applymod is undefined.~n",[?MODULE,CommitedId,Zxid,E]),
 			{noreply, State};
@@ -157,7 +157,7 @@ handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_
 	
 
 handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_mod={M,F},fd=Fd,offset=Offset} = State) ->
-	case file_txn_log:load_logs(CommitedId) of
+	case file_txn_log_ex:load_logs(CommitedId) of
 		{error,E} ->
 			?WARN_F("~p -- load msgs to commit between ~p to ~p ~nerror:~p.~n",[?MODULE,CommitedId,Zxid,E]),
 			{noreply, State};
@@ -174,12 +174,12 @@ handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_
 					{NewFd,NewOffset} = dump_to_file(LastCommitZxid, Fd, Offset),
 					{noreply, State#state{fd=NewFd,last_commit_zxid=LastCommitZxid,offset=NewOffset}};
 				{error,_E,undefined} ->
-					?INFO("~p -- load commit msgs between ~p to ~p~n... stop.~n",[?MODULE,CommitedId,Zxid]),
+					?INFO_F("~p -- load commit msgs between ~p to ~p~n... stop.~n",[?MODULE,CommitedId,Zxid]),
 					{stop, normal,State};
 				{error,_E,LastCommitId} ->
 					?DEBUG_F("~p -- dump to file:~p~n",[?MODULE,{LastCommitId, Fd, Offset}]),
 					{NewFd,NewOffset} = dump_to_file(LastCommitId, Fd, Offset),
-					?INFO("~p -- load commit msgs between ~p to ~p error with lastCommitedZxid:~p... stop.~n",[?MODULE,CommitedId,Zxid,LastCommitId]),
+					?INFO_F("~p -- load commit msgs between ~p to ~p error with lastCommitedZxid:~p... stop.~n",[?MODULE,CommitedId,Zxid,LastCommitId]),
 					{stop, normal, State#state{fd=NewFd,last_commit_zxid=LastCommitId,offset=NewOffset}}
 					
 			end
@@ -187,7 +187,7 @@ handle_cast({load_msg_to_commit,Zxid}, #state{last_commit_zxid=CommitedId,apply_
 	
 
 handle_cast(Msg, State) ->
-	?INFO("~p -- not implement cast:~p~n",[?MODULE,Msg]),
+	?INFO_F("~p -- not implement cast:~p~n",[?MODULE,Msg]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -198,7 +198,7 @@ handle_cast(Msg, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_info(Info, State) ->
-	?INFO("~p -- not implement info:~p~n",[?MODULE,Info]),
+	?INFO_F("~p -- not implement info:~p~n",[?MODULE,Info]),
     {noreply, State}.
 
 %% --------------------------------------------------------------------
@@ -207,7 +207,7 @@ handle_info(Info, State) ->
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
 terminate(Reason, State) ->
-	?INFO("~p -- terminate by reason:~p~n",[?MODULE,Reason]),
+	?INFO_F("~p -- terminate by reason:~p~n",[?MODULE,Reason]),
     ok.
 
 %% --------------------------------------------------------------------
@@ -225,7 +225,7 @@ code_change(OldVsn, State, Extra) ->
 
 -spec load_last_commit() -> {FD::any(),LastCommitZxid::integer(),Offset::integer()}.
 load_last_commit() ->
-	{ok,FD} = prim_file:open(?LAST_COMMIT_ZXID_FILE_NAME,[read,write,binary,append]),
+	{ok,FD} = prim_file:open(?LAST_COMMIT_ZXID_FILE_NAME,[read,write,raw,binary]),
 	case prim_file:read_file_info(?LAST_COMMIT_ZXID_FILE_NAME) of
 		{ok,#file_info{size = 0}} ->
 			{FD,0,0};
@@ -235,28 +235,57 @@ load_last_commit() ->
 			{FD,LastCommitZxid,Size}
 	end.
 
-close_and_create_new_file(Fd) ->
-	prim_file:close(Fd),
-	prim_file:delete(?LAST_COMMIT_ZXID_FILE_NAME),
-	prim_file:open(?LAST_COMMIT_ZXID_FILE_NAME,[write,binary,append]).
-
-
 commit_msg(Zxid,M,F,Msg) ->
 %% 	?DEBUG_F("~p -- commit zxid:~p~n",[?MODULE,Zxid]),
-	case catch M:F(binary_to_term(Msg)) of
+	case binary_to_term(Msg) of
+		{group,GroupMsgs} ->
+%% 			?DEBUG_F("~p -- group commit ~p msgs",[?MODULE,length(GroupMsgs)]),
+			commit_gourp_msgs(Zxid,M,F,GroupMsgs),
+			ok;
+		SingleMsg ->
+			commit_single_msg(Zxid,M,F,SingleMsg),
+			ok
+		
+	end.
+
+commit_single_msg(Zxid,M,F,SingleMsg) ->
+	case catch M:F(SingleMsg) of
 		{error,Reason} ->
 			?ERROR_F("~p -- zxid:~p apply with error:~p",[?MODULE,Zxid,Reason]),
 %% 			{error,apply_msg_failed};
 			ok;
 		{'EXIT',Pid,Reason} ->
 			?ERROR_F("~p -- zxid:~p apply with error:~p",[?MODULE,Zxid,{Pid,Reason}]),
-			{error,apply_msg_failed};
+%% 			{error,apply_msg_failed};
+			ok;
 		{'EXIT',Reason} ->
-			?ERROR_F("~p -- zxid:~p apply with msg:~p~nerror:~p",[?MODULE,Zxid,Msg,Reason]),
-			{error,apply_msg_failed};
+			?ERROR_F("~p -- zxid:~p apply with msg:~p~nerror:~p",[?MODULE,Zxid,SingleMsg,Reason]),
+%% 			{error,apply_msg_failed};
+			ok;
 		_ ->
 			ok
 	end.
+
+commit_gourp_msgs(_Zxid,_M,_F,[]) -> ok;
+commit_gourp_msgs(Zxid,M,F,[Msg|T]) ->
+	case catch M:F(binary_to_term(Msg)) of
+		{error,Reason} ->
+			?ERROR_F("~p -- gourp zxid:~p apply msg:~p with error:~p",[?MODULE,Zxid,Msg,Reason]),
+%% 			{error,apply_msg_failed};
+			ok;
+		{'EXIT',Pid,Reason} ->
+			?ERROR_F("~p -- gourp zxid:~p apply msg:~p with error:~p",[?MODULE,Zxid,Msg,{Pid,Reason}]),
+%% 			{error,apply_msg_failed};
+			ok;
+		{'EXIT',Reason} ->
+			?ERROR_F("~p -- gourp zxid:~p apply msg:~p with error:~p",[?MODULE,Zxid,Msg,Reason]),
+%% 			{error,apply_msg_failed};
+			ok;
+		_ ->
+			ok
+	end,
+	commit_gourp_msgs(Zxid, M, F, T).
+
 
 %% return when uncommitedzxis greater then zxid;
 -spec loop_commit_msgs([{UncommitedZxid::integer(),Msg::binary()}],_,_,Zxid::integer(),LastCommitedZxid::integer()) ->
@@ -275,16 +304,18 @@ loop_commit_msgs([{UncommitedZxid,Msg}|T],M,F,Zxid,LastCommitedZxid) ->
 		ok ->
 			loop_commit_msgs(T, M, F, Zxid,UncommitedZxid);
 		E -> {error,E,LastCommitedZxid}
-	end.
-
+	end;
+loop_commit_msgs([],M,F,Zxid,LastCommitedZxid) ->
+	{ok,Zxid}.
 
 dump_to_file(Zxid,Fd,Offset) ->
 	case Offset >= ?COMMIT_ZXID_SIZE_PER_PAGE of
 		true ->
-			{ok,NewFd} = close_and_create_new_file(Fd),
-			prim_file:write(NewFd, <<Zxid:64/integer>>),
-			{NewFd,8};
+			{ok,_} = prim_file:position(Fd, 0),
+			ok = prim_file:write(Fd, <<Zxid:64/integer>>),
+			ok = prim_file:truncate(Fd),
+			{Fd,8};
 		false ->
-			prim_file:write(Fd, <<Zxid:64/integer>>),
+			ok = prim_file:write(Fd, <<Zxid:64/integer>>),
     		{Fd,Offset+8}
 	end.

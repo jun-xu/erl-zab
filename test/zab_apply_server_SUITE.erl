@@ -7,7 +7,7 @@
 %% Include files
 %%
 -include("log.hrl").
--include("txnlog.hrl").
+-include("txnlog_ex.hrl").
 -include("zab.hrl").
 %%
 %% Exported Functions
@@ -23,6 +23,7 @@ suite() ->
 	[].
 
 init_per_suite(Config) ->
+	catch file_txn_log_ex:stop(normal),
 	Config.
 
 end_per_suite(_Config) ->
@@ -60,15 +61,15 @@ test_undefined_commit(_) ->
 	os:cmd("rm -rf "++Dir++"/log.*"),
 	os:cmd("rm -rf "++Dir++"/last_commit_zxid.log"),
 	timer:sleep(500),
-	{ok,_} = file_txn_log:start_link(),
+	{ok,_} = file_txn_log_ex:start_link(),
 	%% math: ((1+2) * 3 -1) / 4.
-	ok = file_txn_log:append(1, term_to_binary({reset,1})),
-	ok = file_txn_log:append(2, term_to_binary({reset,1})),
-	ok = file_txn_log:append(4, term_to_binary({plus,2})),
+	ok = file_txn_log_ex:append(1, term_to_binary({reset,1})),
+	ok = file_txn_log_ex:append(2, term_to_binary({reset,1})),
+	ok = file_txn_log_ex:append(4, term_to_binary({plus,2})),
 	{ok,Pid} = zab_apply_server:start_link(),
 	ok = zab_apply_server:load_msg_to_commit(3),	
 	ok = zab_apply_server:clear_callback(),
-	ok = file_txn_log:append(5, term_to_binary({reset,1})),
+	ok = file_txn_log_ex:append(5, term_to_binary({reset,1})),
 	
 	ok = zab_apply_server:load_msg_to_commit(5),
 	ok = zab_apply_server:load_msg_to_commit(5),
@@ -76,7 +77,7 @@ test_undefined_commit(_) ->
 	{ok,5} = zab_apply_server:get_last_commit_zxid(),
 	Pid ! test,
 	gen_server:cast(Pid, test),
-	file_txn_log:stop(normal),
+	file_txn_log_ex:stop(normal),
 	zab_apply_server:stop(normal),
 	math_apply:stop(),
 	ok.
@@ -84,15 +85,14 @@ test_undefined_commit(_) ->
 
 test_common(_) ->
 	math_apply:start_link(),
-	
-	{ok,_} = file_txn_log:start_link(),
+	file_txn_log_ex:start_link(),
 	%% math: ((1+2) * 3 -1) / 4.
-	ok = file_txn_log:append(1, term_to_binary({reset,1})),
-	ok = file_txn_log:append(2, term_to_binary({reset,1})),
-	ok = file_txn_log:append(4, term_to_binary({plus,2})),
-	ok = file_txn_log:append(6, term_to_binary({times,3})),
-	ok = file_txn_log:append(7, term_to_binary({minus,1})),
-	ok = file_txn_log:append(8, term_to_binary({divide,4})),
+	ok = file_txn_log_ex:append(1, term_to_binary({reset,1})),
+	ok = file_txn_log_ex:append(2, term_to_binary({reset,1})),
+	ok = file_txn_log_ex:append(4, term_to_binary({plus,2})),
+	ok = file_txn_log_ex:append(6, term_to_binary({times,3})),
+	ok = file_txn_log_ex:append(7, term_to_binary({minus,1})),
+	ok = file_txn_log_ex:append(8, term_to_binary({divide,4})),
 	{ok,Pid} = zab_apply_server:start_link(),
 	%% test when applymod is undefined. ignore.
 	ok = zab_apply_server:commit(1,term_to_binary({reset,1})),
@@ -121,30 +121,30 @@ test_common(_) ->
 	{ok,_} = zab_apply_server:start_link(),
 	{ok,8} = zab_apply_server:get_last_commit_zxid(),
 	ok = zab_apply_server:reset_callback(math_apply, call),
-	ok = file_txn_log:append(9, term_to_binary({reset,1})),
+	ok = file_txn_log_ex:append(9, term_to_binary({reset,1})),
 	ok = zab_apply_server:commit(9,term_to_binary({reset,1})),
-	ok = file_txn_log:append(10, term_to_binary({error,test})),
+	ok = file_txn_log_ex:append(10, term_to_binary({error,test})),
 	ok = zab_apply_server:commit(10,term_to_binary({error,test})),
 	ok = zab_apply_server:load_msg_to_commit(12),
-	ok = file_txn_log:append(11, term_to_binary({reset,1})),
-	ok = file_txn_log:append(12, term_to_binary({error,exit_pid_test})),   %% may stop.
+	ok = file_txn_log_ex:append(11, term_to_binary({reset,1})),
+	ok = file_txn_log_ex:append(12, term_to_binary({error,exit_pid_test})),   %% may stop.
 	ok = zab_apply_server:load_msg_to_commit(12),   %% may stop.
 	timer:sleep(800),
-	{ok,_} = zab_apply_server:start_link(),
+%% 	{ok,_} = zab_apply_server:start_link(),
 	ok = zab_apply_server:reset_callback(math_apply, call),
 	ok = zab_apply_server:load_msg_to_commit(12),   %% may stop.
 	timer:sleep(800),
 	application:set_env(?APP_NAME, apply_mod, {math_apply, call}),
-	{ok,_} = zab_apply_server:start_link(),
-	{ok,11} = zab_apply_server:get_last_commit_zxid(),
+%% 	{ok,_} = zab_apply_server:start_link(),
+	{ok,12} = zab_apply_server:get_last_commit_zxid(),
 	zab_apply_server:stop(normal),
-	file_txn_log:stop(normal),
+	file_txn_log_ex:stop(normal),
 	math_apply:stop(),
 	ok.
 
 
 test_other_commit(_) ->
-	{ok,_} = file_txn_log:start_link(),
+	{ok,_} = file_txn_log_ex:start_link(),
 	{ok,_} = zab_apply_server:start_link(),
 	ok = zab_apply_server:load_msg_to_commit(22),
 	{ok,0} = zab_apply_server:get_last_commit_zxid(),
@@ -152,7 +152,7 @@ test_other_commit(_) ->
 	ok = zab_apply_server:load_msg_to_commit(22),
 	{ok,0} = zab_apply_server:get_last_commit_zxid(),
 	zab_apply_server:stop(normal),
-	file_txn_log:stop(normal),
+	file_txn_log_ex:stop(normal),
 	ok.
 
 
